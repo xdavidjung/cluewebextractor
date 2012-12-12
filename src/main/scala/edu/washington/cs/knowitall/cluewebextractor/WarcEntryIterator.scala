@@ -35,8 +35,28 @@ class WarcEntryIterator(file: Iterator[String]) extends Iterator[WarcEntry] {
   private def nextLine(): String = {
     if (!fileIt.hasNext) throw new NoSuchElementException();
     current = fileIt.next();
-    println(current);
     return current;
+  }
+
+  // data has been observed to have arbitrary carriage returns: this matters
+  // for the WARC header fields.
+  // this method will handle this bad data by checking to see if the next
+  // line (which should be a header field) is in the proper
+  //    "[header key]: [header value]"
+  // format.
+  // if not, appends whatever is there to the previous field until it finds
+  // a line that's properly formatted and returns it.
+  // mutates previous field, the line iterator, and current.
+  def getNextHeaderField(previousField: StringBuilder): StringBuilder = {
+    var nextHeader = nextLine().split(": ")
+    while (nextHeader.length == 1) {
+      if (previousField == null)
+        throw new IllegalArgumentException("getNextHeaderField: bad header")
+
+      previousField.append(nextHeader(0))
+      nextHeader = nextLine().split(": ")
+    }
+    return new StringBuilder(nextHeader(1))
   }
 
   // returns the next WarcEntry in this file.
@@ -46,49 +66,52 @@ class WarcEntryIterator(file: Iterator[String]) extends Iterator[WarcEntry] {
     if (!hasNext) throw new NoSuchElementException();
 
     // start constructing the warc entry fields
-    val wType = nextLine().split(": ")(1);
-    if (wType.equals(WarcEntryIterator.HeaderIndicator)) return null; // header
+    val wType = getNextHeaderField(null);
+    if (wType.toString.equals(WarcEntryIterator.HeaderIndicator)) return null  // header
 
-    val wTargetUri = nextLine().split(": ", -1)(1);
-    val wWarcinfoId = nextLine().split(": ", -1)(1);
-    val wDate = nextLine().split(": ", -1)(1);
-    val wRecordId = nextLine().split(": ", -1)(1);
-    val wTrecId = nextLine().split(": ", -1)(1);
-    val contentType = nextLine().split(": ", -1)(1);
-    val wIdentifiedPayloadType = nextLine().split(": ", -1)(1);
-    val contentLength = nextLine().split(": ", -1)(1).toInt;
+    val wTargetUri = getNextHeaderField(wType);
+    val wWarcinfoId = getNextHeaderField(wTargetUri)
+    val wDate = getNextHeaderField(wWarcinfoId)
+    val wRecordId = getNextHeaderField(wDate)
+    val wTrecId = getNextHeaderField(wRecordId)
+    val contentType = getNextHeaderField(wTrecId)
+    nextLine()  // skip over the identified payload type
+    val contentLength =
+      getNextHeaderField(null).toString.toInt;
 
     // now get the payload
     val sb = new StringBuilder(contentLength);
-    // grab the newline between the header and the payload
-    nextLine();
+    nextLine();  // grab the line between WARC header and HTTP header
+    do {  // grab lines until the line between HTTP header and content
+      nextLine();
+    } while (current.length > 0)
+
     while (fileIt.hasNext) {
       nextLine();
-      if ((current.equals(WarcEntryIterator.NewWarcEntryIndicator)) ||
-          (sb.capacity < sb.length + current.length)) {
+      if ((current.equals(WarcEntryIterator.NewWarcEntryIndicator))) {
         return new WarcEntry(
-          wType,
-          wTargetUri,
-          wWarcinfoId,
-          wDate,
-          wRecordId,
-          wTrecId,
-          contentType,
-          wIdentifiedPayloadType,
+          wType.toString,
+          wTargetUri.toString,
+          wWarcinfoId.toString,
+          wDate.toString,
+          wRecordId.toString,
+          wTrecId.toString,
+          contentType.toString,
           contentLength,
           sb.toString);
       }
       sb.append(current)
+      sb.append(" ")  // append some whitespace to represent a line break
     }
+    // at end of the file: return what we have
     return new WarcEntry(
-      wType,
-      wTargetUri,
-      wWarcinfoId,
-      wDate,
-      wRecordId,
-      wTrecId,
-      contentType,
-      wIdentifiedPayloadType,
+      wType.toString,
+      wTargetUri.toString,
+      wWarcinfoId.toString,
+      wDate.toString,
+      wRecordId.toString,
+      wTrecId.toString,
+      contentType.toString,
       contentLength,
       sb.toString);
   }
