@@ -8,7 +8,6 @@ case class WarcEntry(
   warcRecordId: String,
   warcTrecId: String,
   contentType: String,
-  warcIdentifiedPayloadType: String,
   contentLength: Int,
   payload: String
 );
