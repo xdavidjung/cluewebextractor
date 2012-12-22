@@ -1,1 +1,10 @@
 target/
+Makefile
+.cache
+.classpath
+.project
+.settings/
+.swp
+inputs/
+README.txt
+output.txt
