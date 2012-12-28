@@ -6,6 +6,7 @@ import edu.washington.cs.knowitall.tool.sentence.OpenNlpSentencer;
 
 // takes a filename as a command-line argument and outputs a TODO
 object CluewebExtractorMain extends App {
+  val garbager = new GarbageFilter();
   val bp = extractors.ArticleSentencesExtractor.getInstance
   val sentencer = new OpenNlpSentencer()
 
@@ -18,19 +19,23 @@ object CluewebExtractorMain extends App {
   while(warcIt.hasNext) {
     val warc = warcIt.next()
     if (warc != null) {
-      // pass through boilerpipe and sentencer
+      // pass through boilerpipe, sentencer
       val piped = bp.getText(warc.payload)
       val sentences = sentencer.sentences(piped)
 
-      // for each sentence, print out the:
+      // for each sentence, pass through garbager and then print out the:
       // id, uri, sentence number, sentence
       // separated by tabs
       var i = 0;
       for (sentence <- sentences) {
-        println(warc.warcTrecId + "\t" +
-                warc.warcTargetUri + "\t" +
-                i.toString + "\t" +
-                sentence)
+        if (!garbager.tooShort(sentence) &&
+            garbager.onlyLatinChars(sentence) &&
+            !garbager.containsHtml(sentence)) {
+          println(warc.warcTrecId + "\t" +
+                  warc.warcTargetUri + "\t" +
+                  i.toString + "\t" +
+                  sentence)
+        }
         i = i + 1;
       }
     }
