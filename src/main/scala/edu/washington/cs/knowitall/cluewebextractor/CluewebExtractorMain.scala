@@ -17,7 +17,7 @@ object CluewebExtractorMain extends App {
   val sentencer = new OpenNlpSentencer()
 
   // get an iterator over the lines of the file specified
-  val warcIt = new WarcEntryIterator(Source.fromFile(args(0), "iso-8859-1").getLines)
+  val warcIt = new WarcRecordIterator(Source.fromFile(args(0), "iso-8859-1").getLines)
 
   while(warcIt.hasNext) {
     val warc = warcIt.next()

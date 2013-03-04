@@ -1,7 +1,7 @@
 package edu.washington.cs.knowitall.cluewebextractor
 
 // iterator over war entries in a warc file
-class WarcEntryIterator(file: Iterator[String]) extends Iterator[WarcEntry] {
+class WarcRecordIterator(file: Iterator[String]) extends Iterator[WarcRecord] {
   // iterator over the file that this warc entry iterator is looking at
   val fileIt: Iterator[String] = file;
 
@@ -18,13 +18,13 @@ class WarcEntryIterator(file: Iterator[String]) extends Iterator[WarcEntry] {
     if (!valid) return false;
 
     // check if fileIt is already at the next entry
-    if (current.equals(WarcEntryIterator.NewWarcEntryIndicator)) return true;
+    if (current.equals(WarcRecordIterator.NewWarcRecordIndicator)) return true;
 
     // a warc file has a next warcEntry if we can find a line in fileIt that
     // is equal to "WARC/0.18"
     while (fileIt.hasNext) {
       nextLine();
-      if (current.equals(WarcEntryIterator.NewWarcEntryIndicator)) return true;
+      if (current.equals(WarcRecordIterator.NewWarcRecordIndicator)) return true;
     }
 
     // hasNext returned false: no more warc entries, this iterator is no longer valid
@@ -59,15 +59,15 @@ class WarcEntryIterator(file: Iterator[String]) extends Iterator[WarcEntry] {
     return new StringBuilder(nextHeader(1))
   }
 
-  // returns the next WarcEntry in this file.
+  // returns the next WarcRecord in this file.
   // returns null for the header.
-  // throws NoSuchElementException if there is no next WarcEntry.
-  def next(): WarcEntry = {
+  // throws NoSuchElementException if there is no next WarcRecord.
+  def next(): WarcRecord = {
     if (!hasNext) throw new NoSuchElementException();
 
     // start constructing the warc entry fields
     val wType = getNextHeaderField(null);
-    if (wType.toString.equals(WarcEntryIterator.HeaderIndicator)) return null  // header
+    if (wType.toString.equals(WarcRecordIterator.HeaderIndicator)) return null  // header
 
     val wTargetUri = getNextHeaderField(wType);
     val wWarcinfoId = getNextHeaderField(wTargetUri)
@@ -88,8 +88,8 @@ class WarcEntryIterator(file: Iterator[String]) extends Iterator[WarcEntry] {
 
     while (fileIt.hasNext) {
       nextLine();
-      if ((current.equals(WarcEntryIterator.NewWarcEntryIndicator))) {
-        return new WarcEntry(
+      if ((current.equals(WarcRecordIterator.NewWarcRecordIndicator))) {
+        return new WarcRecord(
           wType.toString,
           wTargetUri.toString,
           wWarcinfoId.toString,
@@ -104,7 +104,7 @@ class WarcEntryIterator(file: Iterator[String]) extends Iterator[WarcEntry] {
       sb.append(" ")  // append some whitespace to represent a line break
     }
     // at end of the file: return what we have
-    return new WarcEntry(
+    return new WarcRecord(
       wType.toString,
       wTargetUri.toString,
       wWarcinfoId.toString,
@@ -117,7 +117,7 @@ class WarcEntryIterator(file: Iterator[String]) extends Iterator[WarcEntry] {
   }
 }
 
-object WarcEntryIterator {
-  val NewWarcEntryIndicator = "WARC/0.18";
+object WarcRecordIterator {
+  val NewWarcRecordIndicator = "WARC/1.0";
   val HeaderIndicator = "warcinfo";
 }
