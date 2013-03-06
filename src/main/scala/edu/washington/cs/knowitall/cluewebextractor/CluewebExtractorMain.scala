@@ -1,5 +1,4 @@
 package edu.washington.cs.knowitall.cluewebextractor
-import scala.io.Source;
 
 import de.l3s.boilerpipe.extractors;
 import edu.washington.cs.knowitall.tool.sentence.OpenNlpSentencer;
@@ -14,46 +13,32 @@ object CluewebExtractorMain extends App {
 
   val garbager = new GarbageFilter(args(1))
   val bp = extractors.ArticleSentencesExtractor.getInstance
-  val sentencer = new OpenNlpSentencer()
+  val sentencer = new OpenNlpSentencer("en-sent.bin")
 
   // get an iterator over the lines of the file specified
-  val warcIt = new WarcRecordIterator(Source.fromFile(args(0), "iso-8859-1").getLines)
+  val warcIt = new WarcRecordIterator(args(0))
 
-  while(warcIt.hasNext) {
-    val warc = warcIt.next()
+  for {
+    warc <- warcIt
+    if warc.warcType.equals("response")
+    piped = bp.getText(warc.payload)
+    if garbager.onlyLatinChars(piped);
+    if garbager.isEnglish(piped)
+    sentences = sentencer.segmentTexts(piped)
+    i <- 0 until sentences.length
+    sentence = garbager.removeWhitespace(sentences(i))
+    if !garbager.tooShort(sentence);
+    if !garbager.containsHtml(sentence);
+    if !garbager.tooLong(sentence)
+  } println(warc.warcTrecId + "\t" +
+            i + "\t" +
+            sentence)
 
-    if (warc != null) {
-      // pass through boilerpipe
-      val piped = bp.getText(warc.payload)
-
-      // check if the payload is english
-      if (garbager.onlyLatinChars(piped) && garbager.isEnglish(piped)) {
-
-        // split into sentences
-        val sentences = sentencer.sentences(piped)
-
-        // for each sentence, pass through garbager and then print out the:
-        // id, uri, sentence number, sentence
-        // separated by tabs
-        var i = 0;
-        for (s <- sentences) {
-          val sentence = garbager.removeWhitespace(s)
-          if (!garbager.tooShort(sentence) &&
-              !garbager.containsHtml(sentence) &&
-              !garbager.tooLong(sentence)) {
-            println(warc.warcTrecId + "\t" +
-                    warc.warcTargetUri + "\t" +
-                    i.toString + "\t" +
-                    sentence)
-          }
-          i = i + 1;
-        }
-      }
-    }
-  }
+  warcIt.close()
 
   def usage() {
-    System.err.println("Usage: java -jar <program> warc-filename profiles-directory");
-    System.exit(1);
+    System.err.println("Usage: java -jar <program> warc-filename " +
+                       "profiles-directory")
+    System.exit(1)
   }
 }
