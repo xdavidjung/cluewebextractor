@@ -14,7 +14,7 @@ package edu.washington.cs.knowitall.cluewebextractor
  * [field-name]": "[field-value]
  * The following fields are mandatory:
  *   WARC-Record-ID
- *         A legal URI that is "globally unique for its
+ *        A legal URI that is "globally unique for its
  *        period of intended use"
  *   Content-Length
  *        The number of octets in the block.
@@ -82,7 +82,7 @@ package edu.washington.cs.knowitall.cluewebextractor
  *        by an independent check. Only used for records with a
  *        well-defined payload.
  *   WARC-Segment-Number
- *        Reports the currnet record's relative ordering in a
+ *        Reports the current record's relative ordering in a
  *        sequence of segmented records. This is mandatory in
  *        any record that is completed in one or more later
  *        'continuation' WARC records. 
@@ -112,10 +112,7 @@ package edu.washington.cs.knowitall.cluewebextractor
  */
 
 case class WarcRecord(
-  WARC-Type: String,
-  WARC-Date: String,
-  WARC-Record-ID: String,
-  WARC-TREC-ID: String,
-  Content-Length: Int,
+  warcType: String,
+  warcTrecId: String,
   payload: String
 );
