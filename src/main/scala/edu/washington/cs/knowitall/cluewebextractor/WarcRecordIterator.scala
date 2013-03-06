@@ -1,15 +1,13 @@
 package edu.washington.cs.knowitall.cluewebextractor
 
 import scala.collection.mutable
-import scala.io.Source
-import scala.util.{Try, Success, Failure}
 
 // This class provides a way to iterate over the WARC records in a ClueWeb12
 // .warc file. This means that it is assumed that the format of the WARC
 // records will match up with those described at:
 //   http://bibnum.bnf.fr/WARC/WARC_ISO_28500_version1_latestdraft.pdf
 // @author David H Jung
-class WarcRecordIterator(fileName: String) extends Iterator[WarcRecord] {
+class WarcRecordIterator(fileIt: Iterator[String]) extends Iterator[WarcRecord] {
   // The number of documents in this warc file
   private var numberOfDocuments: Int = -1
 
@@ -18,12 +16,6 @@ class WarcRecordIterator(fileName: String) extends Iterator[WarcRecord] {
 
   // The latest line that fileIt.next has returned.
   private var current: String = null
-
-  // A file iterator for the warc file.
-  private var fileIt: Iterator[String] = null
-
-  // The source file of fileIt
-  private var source: scala.io.Source = null
 
   // Whether this iterator is valid.
   private var valid = true
@@ -35,12 +27,12 @@ class WarcRecordIterator(fileName: String) extends Iterator[WarcRecord] {
   // then fileIt will be at the beginning of the next warcEntry.
   def hasNext(): Boolean = {
     if (!valid) {
-      return false
+      valid
     }
 
     // check if fileIt is already at the next entry
     if (current.equals(WarcRecordIterator.recordStarter)) {
-      return true
+      return valid
     }
 
     // a warc file has a next warcEntry if we can find a line in fileIt that
@@ -48,14 +40,14 @@ class WarcRecordIterator(fileName: String) extends Iterator[WarcRecord] {
     while (fileIt.hasNext) {
       nextLine()
       if (current.equals(WarcRecordIterator.recordStarter)) {
-        return true
+        return valid
       }
     }
 
     // hasNext returned false: no more warc entries,
     // this iterator is no longer valid
     valid = false
-    return false
+    valid
   }
 
   // Returns the next WarcRecord in this file.
@@ -95,49 +87,23 @@ class WarcRecordIterator(fileName: String) extends Iterator[WarcRecord] {
       nextLine()
     }
 
-    /*
-    do {  // grab lines until the line between HTTP header and content
-      nextLine()
-    } while (current.length > 0)
-    */
-
     currentDocument = currentDocument + 1
     new WarcRecord(warcType, warcTrecId, sb.toString)
-  }
-
-  // Closes the file
-  def close() = {
-    source.close()
   }
 
   // Opens the file given in the constructor and slurps up the warcinfo header
   // for this file, setting fileIt to the beginning of the first warc record.
   private def initialize(): Unit = {
-    // open the file
-    val sourceTry = Try(Source.fromFile(fileName, "ISO-8859-1"))
-    sourceTry match {
-      case Success(s) =>
-        source = s
-      case Failure(e) =>
-        System.err.println("Unable to open file " + fileName)
-        System.exit(1)
-    }
-
-    fileIt = source.getLines
-
     // just a quick check that this is indeed a warc file:
     require(nextLine().equals(WarcRecordIterator.recordStarter),
-            fileName + " does not seem to be a valid WARC 1.0 file\n" +
-            "First line: " + current)
+            "Input does not follow WARC 1.0 format")
     require(nextLine().split(": ")(1).equals(WarcRecordIterator.HeaderType),
-            fileName + "does not seem to be a valid WARC 1.0 file\n" +
-            "Second line: " + current)
+            "Input does not follow WARC 1.0 format")
 
     // now process the header: the goal is to get the number of docs and set
     // the file iterator at the beginning of the first actual warc record
     while(fileIt.hasNext) {
       nextLine()
-      // TODO Add check for number of documents
       if (current.split(": ")(0).equals(WarcRecordIterator.numDocField)) {
         numberOfDocuments = current.split(": ")(1).toInt
       }

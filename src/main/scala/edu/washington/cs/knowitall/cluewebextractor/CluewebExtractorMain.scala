@@ -1,7 +1,9 @@
 package edu.washington.cs.knowitall.cluewebextractor
 
-import de.l3s.boilerpipe.extractors;
-import edu.washington.cs.knowitall.tool.sentence.OpenNlpSentencer;
+import scala.io.Source
+
+import de.l3s.boilerpipe.extractors
+import edu.washington.cs.knowitall.tool.sentence.OpenNlpSentencer
 
 // CLI that takes a filename as an argument and outputs the extracted clueweb
 // information. 
@@ -9,14 +11,15 @@ import edu.washington.cs.knowitall.tool.sentence.OpenNlpSentencer;
 // module.
 object CluewebExtractorMain extends App {
   // check for the proper number of command line arguments
-  if (args.length != 2) usage
+  usage(args.length)
 
-  val garbager = new GarbageFilter(args(1))
+  // get the warc record input and create the iterator
+  val source = getSource(args)
+  val warcIt = new WarcRecordIterator(source.getLines)
+
+  val garbager = new GarbageFilter(args(0))
   val bp = extractors.ArticleSentencesExtractor.getInstance
   val sentencer = new OpenNlpSentencer("en-sent.bin")
-
-  // get an iterator over the lines of the file specified
-  val warcIt = new WarcRecordIterator(args(0))
 
   for {
     warc <- warcIt
@@ -34,11 +37,24 @@ object CluewebExtractorMain extends App {
             i + "\t" +
             sentence)
 
-  warcIt.close()
+  source.close()
 
-  def usage() {
-    System.err.println("Usage: java -jar <program> warc-filename " +
-                       "profiles-directory")
-    System.exit(1)
+  def usage(numArgs: Int) {
+    if (numArgs != 1 && numArgs != 2) {
+      System.err.println("Usage1: gunzip -c <input.warc.gz> | java -jar " +
+                         "<this.jar> <profiles/>\nUsage2: java -jar " +
+                         "<this.jar> <profiles/> <input.warc>")
+      System.exit(1)
+    }
+  }
+
+  def getSource(args: Array[String]): Source = {
+    if (args.length == 2) {
+      // then the user has passed in a filename: use it
+      Source.fromFile(args(1), "ISO-8859-1")
+    } else {
+      // then the user will pass in the file through stdin
+      Source.fromInputStream(System.in, "ISO-8859-1")
+    }
   }
 }
