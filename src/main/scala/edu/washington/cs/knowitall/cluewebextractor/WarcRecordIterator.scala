@@ -1,123 +1,183 @@
 package edu.washington.cs.knowitall.cluewebextractor
 
-// iterator over war entries in a warc file
-class WarcRecordIterator(file: Iterator[String]) extends Iterator[WarcRecord] {
-  // iterator over the file that this warc entry iterator is looking at
-  val fileIt: Iterator[String] = file;
+import scala.collection.mutable
+import scala.io.Source
+import scala.util.{Try, Success, Failure}
 
-  // the latest line that fileIt has returned
-  var current: String = "";
+// This class provides a way to iterate over the WARC records in a ClueWeb12
+// .warc file. This means that it is assumed that the format of the WARC
+// records will match up with those described at:
+//   http://bibnum.bnf.fr/WARC/WARC_ISO_28500_version1_latestdraft.pdf
+// @author David H Jung
+class WarcRecordIterator(fileName: String) extends Iterator[WarcRecord] {
+  // The number of documents in this warc file
+  private var numberOfDocuments: Int = -1
 
-  // whether this iterator is valid
-  var valid = true;
+  // The current document. Used for debugging.
+  private var currentDocument: Int = -1
 
-  // returns true if there is another warc entry in file.
-  // mutates the state of file: if hasNext returns true, then fileIt will be at
-  // the beginning of the next warcEntry
+  // The latest line that fileIt.next has returned.
+  private var current: String = null
+
+  // A file iterator for the warc file.
+  private var fileIt: Iterator[String] = null
+
+  // The source file of fileIt
+  private var source: scala.io.Source = null
+
+  // Whether this iterator is valid.
+  private var valid = true
+
+  initialize()
+
+  // Returns true if there is another warc entry in file.
+  // Can mutate the state of fileIt: if hasNext returns true,
+  // then fileIt will be at the beginning of the next warcEntry.
   def hasNext(): Boolean = {
-    if (!valid) return false;
+    if (!valid) {
+      return false
+    }
 
     // check if fileIt is already at the next entry
-    if (current.equals(WarcRecordIterator.NewWarcRecordIndicator)) return true;
+    if (current.equals(WarcRecordIterator.recordStarter)) {
+      return true
+    }
 
     // a warc file has a next warcEntry if we can find a line in fileIt that
-    // is equal to "WARC/0.18"
+    // is equal to recordStarter
     while (fileIt.hasNext) {
-      nextLine();
-      if (current.equals(WarcRecordIterator.NewWarcRecordIndicator)) return true;
+      nextLine()
+      if (current.equals(WarcRecordIterator.recordStarter)) {
+        return true
+      }
     }
 
-    // hasNext returned false: no more warc entries, this iterator is no longer valid
-    valid = false;
-    return false;
+    // hasNext returned false: no more warc entries,
+    // this iterator is no longer valid
+    valid = false
+    return false
   }
 
-  private def nextLine(): String = {
-    if (!fileIt.hasNext) throw new NoSuchElementException();
-    current = fileIt.next();
-    return current;
-  }
-
-  // data has been observed to have arbitrary carriage returns: this matters
-  // for the WARC header fields.
-  // this method will handle this bad data by checking to see if the next
-  // line (which should be a header field) is in the proper
-  //    "[header key]: [header value]"
-  // format.
-  // if not, appends whatever is there to the previous field until it finds
-  // a line that's properly formatted and returns it.
-  // mutates previous field, the line iterator, and current.
-  def getNextHeaderField(previousField: StringBuilder): StringBuilder = {
-    var nextHeader = nextLine().split(": ")
-    while (nextHeader.length == 1) {
-      if (previousField == null)
-        throw new IllegalArgumentException("getNextHeaderField: bad header")
-
-      previousField.append(nextHeader(0))
-      nextHeader = nextLine().split(": ")
-    }
-    return new StringBuilder(nextHeader(1))
-  }
-
-  // returns the next WarcRecord in this file.
-  // returns null for the header.
+  // Returns the next WarcRecord in this file.
   // throws NoSuchElementException if there is no next WarcRecord.
   def next(): WarcRecord = {
-    if (!hasNext) throw new NoSuchElementException();
-
-    // start constructing the warc entry fields
-    val wType = getNextHeaderField(null);
-    if (wType.toString.equals(WarcRecordIterator.HeaderIndicator)) return null  // header
-
-    val wTargetUri = getNextHeaderField(wType);
-    val wWarcinfoId = getNextHeaderField(wTargetUri)
-    val wDate = getNextHeaderField(wWarcinfoId)
-    val wRecordId = getNextHeaderField(wDate)
-    val wTrecId = getNextHeaderField(wRecordId)
-    val contentType = getNextHeaderField(wTrecId)
-    nextLine()  // skip over the identified payload type
-    val contentLength =
-      getNextHeaderField(null).toString.toInt;
-
-    // now get the payload
-    val sb = new StringBuilder(contentLength);
-    nextLine();  // grab the line between WARC header and HTTP header
-    do {  // grab lines until the line between HTTP header and content
-      nextLine();
-    } while (current.length > 0)
-
-    while (fileIt.hasNext) {
-      nextLine();
-      if ((current.equals(WarcRecordIterator.NewWarcRecordIndicator))) {
-        return new WarcRecord(
-          wType.toString,
-          wTargetUri.toString,
-          wWarcinfoId.toString,
-          wDate.toString,
-          wRecordId.toString,
-          wTrecId.toString,
-          contentType.toString,
-          contentLength,
-          sb.toString);
-      }
-      sb.append(current)
-      sb.append(" ")  // append some whitespace to represent a line break
+    if (!hasNext) {
+      throw new NoSuchElementException()
     }
-    // at end of the file: return what we have
-    return new WarcRecord(
-      wType.toString,
-      wTargetUri.toString,
-      wWarcinfoId.toString,
-      wDate.toString,
-      wRecordId.toString,
-      wTrecId.toString,
-      contentType.toString,
-      contentLength,
-      sb.toString);
+
+    // Grab lines and process fields until we hit the end of block indicator
+    val warcFieldMap = mutable.Map.empty[String, String]
+    nextLine()
+    while (!current.equals(WarcRecordIterator.endOfBlock)) {
+      val splitLine = current.split(": ")
+      warcFieldMap(splitLine(0)) = splitLine(1)
+      nextLine()
+    }
+
+    // Get the fields we want
+    val warcType = warcFieldMap(WarcRecordIterator.typeIndicator)
+    val warcTrecId = warcFieldMap(WarcRecordIterator.trecIdIndicator)
+    val contentLength = warcFieldMap(WarcRecordIterator.
+                                     contentLengthIndicator).toInt
+
+    // Get the payload: we know that we're finished with the payload when we:
+    //   Hit the end of the file, or 
+    //   Are at the beginning of a new record
+
+    // note that contentLength is not the exact length of the input that we
+    // store, but it is a good upper bound.
+    val sb = new StringBuilder(contentLength)
+    nextLine()
+    while (fileIt.hasNext &&
+           !current.equals(WarcRecordIterator.recordStarter)) {
+      sb.append(current)
+      sb.append(" ")  // need a space between lines
+      nextLine()
+    }
+
+    /*
+    do {  // grab lines until the line between HTTP header and content
+      nextLine()
+    } while (current.length > 0)
+    */
+
+    currentDocument = currentDocument + 1
+    new WarcRecord(warcType, warcTrecId, sb.toString)
+  }
+
+  // Closes the file
+  def close() = {
+    source.close()
+  }
+
+  // Opens the file given in the constructor and slurps up the warcinfo header
+  // for this file, setting fileIt to the beginning of the first warc record.
+  private def initialize(): Unit = {
+    // open the file
+    val sourceTry = Try(Source.fromFile(fileName, "ISO-8859-1"))
+    sourceTry match {
+      case Success(s) =>
+        source = s
+      case Failure(e) =>
+        System.err.println("Unable to open file " + fileName)
+        System.exit(1)
+    }
+
+    fileIt = source.getLines
+
+    // just a quick check that this is indeed a warc file:
+    require(nextLine().equals(WarcRecordIterator.recordStarter),
+            fileName + " does not seem to be a valid WARC 1.0 file\n" +
+            "First line: " + current)
+    require(nextLine().split(": ")(1).equals(WarcRecordIterator.HeaderType),
+            fileName + "does not seem to be a valid WARC 1.0 file\n" +
+            "Second line: " + current)
+
+    // now process the header: the goal is to get the number of docs and set
+    // the file iterator at the beginning of the first actual warc record
+    while(fileIt.hasNext) {
+      nextLine()
+      // TODO Add check for number of documents
+      if (current.split(": ")(0).equals(WarcRecordIterator.numDocField)) {
+        numberOfDocuments = current.split(": ")(1).toInt
+      }
+      if (current.equals(WarcRecordIterator.recordStarter)) {
+        currentDocument = 0
+        return
+      }
+    }
+  }
+
+  // Gets the next line of input and stores it in current.
+  private def nextLine(): String = {
+    if (!fileIt.hasNext) {
+      throw new NoSuchElementException()
+    }
+    current = fileIt.next()
+    current
   }
 }
 
 object WarcRecordIterator {
-  val NewWarcRecordIndicator = "WARC/1.0";
-  val HeaderIndicator = "warcinfo";
+  // When found alone, indicates the end of a block (header, payload).
+  val endOfBlock = ""
+
+  // When found alone, indicates the start of a new WARC record.
+  val recordStarter = "WARC/1.0"
+
+  // The type of the header WARC record, present at the beginning of
+  // all .warc files.
+  val HeaderType = "warcinfo"
+
+  // Field in the warcinfo header for the number of documents in this warc file
+  val numDocField = "WARC-Number-Of-Documents"
+
+  // Field in all ClueWeb records that gives an id
+  val trecIdIndicator = "WARC-TREC-ID"
+
+  // indicates the field that gives the warc type of the record
+  val typeIndicator = "WARC-Type"
+
+  // indicates the field that gives content length
+  val contentLengthIndicator = "Content-Length"
 }
