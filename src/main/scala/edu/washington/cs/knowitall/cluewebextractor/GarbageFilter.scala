@@ -46,6 +46,7 @@ class GarbageFilter(dir: String) {
 
   // returns true if input contains HTML content
   def containsHtml(input: String): Boolean = {
+    input.startsWith("HTTP/1.1") ||  // is an HTTP request
     input.contains("</") ||  // closing tags
     input.contains("/>") ||  // self-closing tags
     input.contains("<a href=") ||  // anchor tags
