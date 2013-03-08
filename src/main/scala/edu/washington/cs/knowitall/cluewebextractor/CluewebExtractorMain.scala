@@ -36,7 +36,9 @@ object CluewebExtractorMain extends App {
   val sentencer = new OpenNlpSentencer("en-sent.bin")
 
   for {
-    warc <- warcIt
+    wOption <- warcIt
+    if wOption != None
+    warc = wOption.get
     if warc.warcType.equals("response")
     piped = bp.getText(warc.payload)
     if garbager.onlyLatinChars(piped);
