@@ -1,3 +1,5 @@
+cluewebextractor.jar
+logs/
 target/
 Makefile
 .cache
