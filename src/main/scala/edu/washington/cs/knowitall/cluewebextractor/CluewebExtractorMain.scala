@@ -1,9 +1,19 @@
 package edu.washington.cs.knowitall.cluewebextractor
 
-import scala.io.Source
+import java.io.FileInputStream
+import java.io.File
+import java.io.PrintStream
+
+import edu.washington.cs.knowitall.tool.sentence.OpenNlpSentencer
 
 import de.l3s.boilerpipe.extractors
-import edu.washington.cs.knowitall.tool.sentence.OpenNlpSentencer
+
+import scala.io.Source
+import scalax.io.JavaConverters._
+import scalax.io._
+
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 
 // CLI that takes a filename as an argument and outputs the extracted clueweb
 // information. 
@@ -13,10 +23,14 @@ object CluewebExtractorMain extends App {
   // check for the proper number of command line arguments
   usage(args.length)
 
-  // get the warc record input and create the iterator
-  val source = getSource(args)
-  val warcIt = new WarcRecordIterator(source.getLines)
+  val logger = LoggerFactory.getLogger(this.getClass)
 
+  // get the warc record input and create the iterator
+  val input = getInput(args)
+  val bytes = input.bytes
+  val warcIt = new WarcRecordIterator(bytes)
+
+  val outstream = new PrintStream(System.out, true, "UTF-8")
   val garbager = new GarbageFilter(args(0))
   val bp = extractors.ArticleSentencesExtractor.getInstance
   val sentencer = new OpenNlpSentencer("en-sent.bin")
@@ -33,11 +47,13 @@ object CluewebExtractorMain extends App {
     if !garbager.tooShort(sentence);
     if !garbager.containsHtml(sentence);
     if !garbager.tooLong(sentence)
-  } println(warc.warcTrecId + "\t" +
-            i + "\t" +
-            sentence)
+  } outstream.println(warc.warcTrecId + "\t" +
+                      warc.warcUri + "\t" +
+                      warc.warcDate + "\t" +
+                      i + "\t" +
+                      sentence)
 
-  source.close()
+  // TODO reopen and close the resource, as a hack
 
   def usage(numArgs: Int) {
     if (numArgs != 1 && numArgs != 2) {
@@ -48,13 +64,14 @@ object CluewebExtractorMain extends App {
     }
   }
 
-  def getSource(args: Array[String]): Source = {
+  def getInput(args: Array[String]): Input = {
+    System.err.println("GetInput")
     if (args.length == 2) {
-      // then the user has passed in a filename: use it
-      Source.fromFile(args(1), "ISO-8859-1")
+      // then the user has passed in a filename
+      new FileInputStream(new File(args(1))).asUnmanagedInput
     } else {
       // then the user will pass in the file through stdin
-      Source.fromInputStream(System.in, "ISO-8859-1")
+      System.in.asUnmanagedInput
     }
   }
 }
