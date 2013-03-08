@@ -39,8 +39,18 @@ class WarcRecordIterator(fileBytes: LongTraversable[Byte]) extends Iterator[Opti
 
     // a warc file has a next warcEntry if we can find a line in fileBytes that
     // is equal to recordStarter
-    while (!current.equals(WarcRecordIterator.recordStarter)) {
+    while (!current.equals(WarcRecordIterator.recordStarter) && valid) {
       nextLine()
+      if (current.equals("")) {
+        logger.info("Reached end of file at document " + currentDocument +
+                    "/" + numberOfDocuments)
+        if (currentDocument != numberOfDocuments) {
+          logger.error("No more entries but currentDocument is not " +
+                       "numberOfDocuments: " + currentDocument + "/" +
+                       numberOfDocuments)
+        }
+        valid = false
+      }
     }
 
     if (!current.equals(WarcRecordIterator.recordStarter)) {
@@ -134,9 +144,18 @@ class WarcRecordIterator(fileBytes: LongTraversable[Byte]) extends Iterator[Opti
     nextLine()
     while(!current.equals(WarcRecordIterator.recordStarter)) {
       if (current.split(": ")(0).equals(WarcRecordIterator.numDocField)) {
-        numberOfDocuments = current.split(": ")(1).toInt
+        try {
+          numberOfDocuments = current.split(": ")(1).dropRight(1).toInt
+        } catch {
+          case e: NumberFormatException =>
+            logger.error("Unable to convert document total to int with " +
+                         "string: " + current.split(": ")(1).dropRight(1))
+        }
       }
       nextLine()
+    }
+    if (numberOfDocuments == -1) {
+      logger.error("Number of documents not found for warc file")
     }
   }
 }
@@ -153,7 +172,7 @@ object WarcRecordIterator {
   val headerType = "warcinfo\r"
 
   // Field in the warcinfo header for the number of documents in this warc file
-  val numDocField = "WARC-Number-Of-Documents"
+  val numDocField = "WARC-Number-of-Documents"
 
   // indicates the field that gives an id
   val trecIdIndicator = "WARC-TREC-ID"
