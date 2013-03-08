@@ -27,8 +27,8 @@ object CluewebExtractorMain extends App {
 
   // get the warc record input and create the iterator
   val input = getInput(args)
-  val bytes = input.bytes
-  val warcIt = new WarcRecordIterator(bytes)
+  val warcIt = new WarcRecordIterator(input.bytes)
+  logger.info("Successfully created new warc iterator")
 
   val outstream = new PrintStream(System.out, true, "UTF-8")
   val garbager = new GarbageFilter(args(0))
@@ -53,7 +53,7 @@ object CluewebExtractorMain extends App {
                       i + "\t" +
                       sentence)
 
-  // TODO reopen and close the resource, as a hack
+  // TODO close the file
 
   def usage(numArgs: Int) {
     if (numArgs != 1 && numArgs != 2) {
@@ -65,12 +65,13 @@ object CluewebExtractorMain extends App {
   }
 
   def getInput(args: Array[String]): Input = {
-    System.err.println("GetInput")
     if (args.length == 2) {
       // then the user has passed in a filename
+      logger.info("Opening file " + args(1))
       new FileInputStream(new File(args(1))).asUnmanagedInput
     } else {
       // then the user will pass in the file through stdin
+      logger.info("Accepting input from STDIN")
       System.in.asUnmanagedInput
     }
   }
