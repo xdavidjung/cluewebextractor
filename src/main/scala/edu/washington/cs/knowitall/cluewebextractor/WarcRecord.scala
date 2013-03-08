@@ -114,5 +114,7 @@ package edu.washington.cs.knowitall.cluewebextractor
 case class WarcRecord(
   warcType: String,
   warcTrecId: String,
+  warcDate: String,
+  warcUri: String,
   payload: String
 );
