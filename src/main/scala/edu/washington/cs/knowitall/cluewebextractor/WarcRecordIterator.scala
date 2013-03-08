@@ -1,52 +1,52 @@
 package edu.washington.cs.knowitall.cluewebextractor
 
 import scala.collection.mutable
+import scalax.io._
+import scalax.io.JavaConverters._
+
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 
 // This class provides a way to iterate over the WARC records in a ClueWeb12
 // .warc file. This means that it is assumed that the format of the WARC
 // records will match up with those described at:
 //   http://bibnum.bnf.fr/WARC/WARC_ISO_28500_version1_latestdraft.pdf
 // @author David H Jung
-class WarcRecordIterator(fileIt: Iterator[String]) extends Iterator[WarcRecord] {
+class WarcRecordIterator(fileBytes: LongTraversable[Byte]) extends Iterator[WarcRecord] {
   // The number of documents in this warc file
   private var numberOfDocuments: Int = -1
 
   // The current document. Used for debugging.
   private var currentDocument: Int = -1
 
-  // The latest line that fileIt.next has returned.
+  // The latest line that has been read from fileBytes.
   private var current: String = null
 
   // Whether this iterator is valid.
   private var valid = true
 
+  private val logger = LoggerFactory.getLogger(this.getClass)
+
   initialize()
 
   // Returns true if there is another warc entry in file.
-  // Can mutate the state of fileIt: if hasNext returns true,
-  // then fileIt will be at the beginning of the next warcEntry.
+  // Can mutate the state of fileBytes: if hasNext returns true,
+  // then fileBytes will be at the beginning of the next warcEntry.
   def hasNext(): Boolean = {
     if (!valid) {
       valid
     }
 
-    // check if fileIt is already at the next entry
-    if (current.equals(WarcRecordIterator.recordStarter)) {
-      return valid
-    }
-
-    // a warc file has a next warcEntry if we can find a line in fileIt that
+    // a warc file has a next warcEntry if we can find a line in fileBytes that
     // is equal to recordStarter
-    while (fileIt.hasNext) {
+    while (!current.equals(WarcRecordIterator.recordStarter)) {
       nextLine()
-      if (current.equals(WarcRecordIterator.recordStarter)) {
-        return valid
-      }
     }
 
-    // hasNext returned false: no more warc entries,
-    // this iterator is no longer valid
-    valid = false
+    if (!current.equals(WarcRecordIterator.recordStarter)) {
+      valid = false
+    }
+
     valid
   }
 
@@ -67,32 +67,33 @@ class WarcRecordIterator(fileIt: Iterator[String]) extends Iterator[WarcRecord] 
     }
 
     // Get the fields we want
-    val warcType = warcFieldMap(WarcRecordIterator.typeIndicator)
-    val warcTrecId = warcFieldMap(WarcRecordIterator.trecIdIndicator)
+    val warcType = warcFieldMap(WarcRecordIterator.typeIndicator).dropRight(1)
+    val warcTrecId = warcFieldMap(WarcRecordIterator.trecIdIndicator).dropRight(1)
+    val warcDate = warcFieldMap(WarcRecordIterator.dateIndicator).dropRight(1)
+    val warcUri = warcFieldMap(WarcRecordIterator.uriIndicator).dropRight(1)
     val contentLength = warcFieldMap(WarcRecordIterator.
-                                     contentLengthIndicator).toInt
+                                     contentLengthIndicator).dropRight(1).toInt
 
-    // Get the payload: we know that we're finished with the payload when we:
-    //   Hit the end of the file, or 
-    //   Are at the beginning of a new record
-
-    // note that contentLength is not the exact length of the input that we
-    // store, but it is a good upper bound.
-    val sb = new StringBuilder(contentLength)
-    nextLine()
-    while (fileIt.hasNext &&
-           !current.equals(WarcRecordIterator.recordStarter)) {
-      sb.append(current)
-      sb.append(" ")  // need a space between lines
-      nextLine()
-    }
+    // Get the payload
+    val warcPayload = fileBytes.take(contentLength)
+                               .asInput
+                               .chars(Codec("UTF-8"))
+                               .mkString("")
 
     currentDocument = currentDocument + 1
-    new WarcRecord(warcType, warcTrecId, sb.toString)
+    new WarcRecord(warcType, warcTrecId, warcDate, warcUri, warcPayload)
+  }
+
+  // Gets the next line of input and stores it in current.
+  private def nextLine(): String = {
+    current = fileBytes.takeWhile(_!='\n')
+                       .map(_.toChar)
+                       .mkString("")
+    current
   }
 
   // Opens the file given in the constructor and slurps up the warcinfo header
-  // for this file, setting fileIt to the beginning of the first warc record.
+  // for this file, setting fileBytes to the beginning of the first warc record.
   private def initialize(): Unit = {
     // just a quick check that this is indeed a warc file:
     require(nextLine().equals(WarcRecordIterator.recordStarter),
@@ -102,44 +103,39 @@ class WarcRecordIterator(fileIt: Iterator[String]) extends Iterator[WarcRecord] 
 
     // now process the header: the goal is to get the number of docs and set
     // the file iterator at the beginning of the first actual warc record
-    while(fileIt.hasNext) {
-      nextLine()
+    currentDocument = 0
+    nextLine()
+    while(!current.equals(WarcRecordIterator.recordStarter)) {
       if (current.split(": ")(0).equals(WarcRecordIterator.numDocField)) {
         numberOfDocuments = current.split(": ")(1).toInt
       }
-      if (current.equals(WarcRecordIterator.recordStarter)) {
-        currentDocument = 0
-        return
-      }
+      nextLine()
     }
-  }
-
-  // Gets the next line of input and stores it in current.
-  private def nextLine(): String = {
-    if (!fileIt.hasNext) {
-      throw new NoSuchElementException()
-    }
-    current = fileIt.next()
-    current
   }
 }
 
 object WarcRecordIterator {
   // When found alone, indicates the end of a block (header, payload).
-  val endOfBlock = ""
+  val endOfBlock = "\r"
 
   // When found alone, indicates the start of a new WARC record.
-  val recordStarter = "WARC/1.0"
+  val recordStarter = "WARC/1.0\r"
 
   // The type of the header WARC record, present at the beginning of
   // all .warc files.
-  val HeaderType = "warcinfo"
+  val HeaderType = "warcinfo\r"
 
   // Field in the warcinfo header for the number of documents in this warc file
   val numDocField = "WARC-Number-Of-Documents"
 
-  // Field in all ClueWeb records that gives an id
+  // indicates the field that gives an id
   val trecIdIndicator = "WARC-TREC-ID"
+
+  // indicates the field that gives a date
+  val dateIndicator = "WARC-Date"
+
+  // indicates the field that gives a uri
+  val uriIndicator = "WARC-Target-URI"
 
   // indicates the field that gives the warc type of the record
   val typeIndicator = "WARC-Type"
