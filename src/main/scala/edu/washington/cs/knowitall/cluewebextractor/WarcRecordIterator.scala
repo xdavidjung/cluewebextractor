@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory
 // records will match up with those described at:
 //   http://bibnum.bnf.fr/WARC/WARC_ISO_28500_version1_latestdraft.pdf
 // @author David H Jung
-class WarcRecordIterator(fileBytes: LongTraversable[Byte]) extends Iterator[WarcRecord] {
+class WarcRecordIterator(fileBytes: LongTraversable[Byte]) extends Iterator[Option[WarcRecord]] {
   // The number of documents in this warc file
   private var numberOfDocuments: Int = -1
 
@@ -52,16 +52,27 @@ class WarcRecordIterator(fileBytes: LongTraversable[Byte]) extends Iterator[Warc
 
   // Returns the next WarcRecord in this file.
   // throws NoSuchElementException if there is no next WarcRecord.
-  def next(): WarcRecord = {
+  def next(): Option[WarcRecord] = {
     if (!hasNext) {
       throw new NoSuchElementException()
     }
+
+    logger.info("Getting next WARC record. Current document: " +
+                currentDocument)
 
     // Grab lines and process fields until we hit the end of block indicator
     val warcFieldMap = mutable.Map.empty[String, String]
     nextLine()
     while (!current.equals(WarcRecordIterator.endOfBlock)) {
       val splitLine = current.split(": ")
+
+      // all lines until the end of the block should be splittable
+      if (splitLine.length != 2) {
+        logger.error("Bad WARC header: no ': ' sequence in document: " +
+                     currentDocument + " on line: " + current)
+        return None
+      }
+
       warcFieldMap(splitLine(0)) = splitLine(1)
       nextLine()
     }
@@ -71,8 +82,18 @@ class WarcRecordIterator(fileBytes: LongTraversable[Byte]) extends Iterator[Warc
     val warcTrecId = warcFieldMap(WarcRecordIterator.trecIdIndicator).dropRight(1)
     val warcDate = warcFieldMap(WarcRecordIterator.dateIndicator).dropRight(1)
     val warcUri = warcFieldMap(WarcRecordIterator.uriIndicator).dropRight(1)
-    val contentLength = warcFieldMap(WarcRecordIterator.
-                                     contentLengthIndicator).dropRight(1).toInt
+    var contentLength = -1
+
+    try {
+      contentLength = warcFieldMap(WarcRecordIterator.
+                                   contentLengthIndicator).dropRight(1).toInt
+    } catch {
+      case e: NumberFormatException =>
+        logger.error("Unable to convert content length to int with string: " +
+                     warcFieldMap(WarcRecordIterator.contentLengthIndicator) +
+                     " in document: " + currentDocument)
+        return None
+    }
 
     // Get the payload
     val warcPayload = fileBytes.take(contentLength)
@@ -81,7 +102,7 @@ class WarcRecordIterator(fileBytes: LongTraversable[Byte]) extends Iterator[Warc
                                .mkString("")
 
     currentDocument = currentDocument + 1
-    new WarcRecord(warcType, warcTrecId, warcDate, warcUri, warcPayload)
+    new Some(WarcRecord(warcType, warcTrecId, warcDate, warcUri, warcPayload))
   }
 
   // Gets the next line of input and stores it in current.
@@ -96,10 +117,16 @@ class WarcRecordIterator(fileBytes: LongTraversable[Byte]) extends Iterator[Warc
   // for this file, setting fileBytes to the beginning of the first warc record.
   private def initialize(): Unit = {
     // just a quick check that this is indeed a warc file:
-    require(nextLine().equals(WarcRecordIterator.recordStarter),
-            "Input does not follow WARC 1.0 format")
-    require(nextLine().split(": ")(1).equals(WarcRecordIterator.HeaderType),
-            "Input does not follow WARC 1.0 format")
+    if (!nextLine().equals(WarcRecordIterator.recordStarter)) {
+      logger.error("Input first line is not " +
+                   WarcRecordIterator.recordStarter)
+      valid = false
+    }
+    if (!nextLine().split(": ")(1).equals(WarcRecordIterator.headerType)) {
+      logger.error("Input second line is not " +
+                   WarcRecordIterator.headerType)
+      valid = false
+    }
 
     // now process the header: the goal is to get the number of docs and set
     // the file iterator at the beginning of the first actual warc record
@@ -123,7 +150,7 @@ object WarcRecordIterator {
 
   // The type of the header WARC record, present at the beginning of
   // all .warc files.
-  val HeaderType = "warcinfo\r"
+  val headerType = "warcinfo\r"
 
   // Field in the warcinfo header for the number of documents in this warc file
   val numDocField = "WARC-Number-Of-Documents"
