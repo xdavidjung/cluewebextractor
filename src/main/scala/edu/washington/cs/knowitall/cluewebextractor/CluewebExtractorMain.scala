@@ -3,6 +3,11 @@ package edu.washington.cs.knowitall.cluewebextractor
 import edu.washington.cs.knowitall.tool.sentence.OpenNlpSentencer
 import edu.washington.cs.knowitall.common.Timing
 import edu.washington.cs.knowitall.common.Resource
+import edu.washington.cs.knowitall.extractor.HtmlSentenceExtractor
+import edu.washington.cs.knowitall.extractor.mapper.BracketsRemover;
+import edu.washington.cs.knowitall.extractor.mapper.SentenceEndFilter;
+import edu.washington.cs.knowitall.extractor.mapper.SentenceLengthFilter;
+import edu.washington.cs.knowitall.extractor.mapper.SentenceStartFilter;
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.io.FileWriter
@@ -25,7 +30,6 @@ object CluewebExtractorMain extends App {
   val logger = LoggerFactory.getLogger(this.getClass)
   case class Config(
     inputFiles: Seq[File] = Seq.empty,
-    profileDirectory: File = new File("profiles"),
     outputDirectory: Option[File] = None) {
     def outputFile(inputFile: File): File = {
       val name = inputFile.getName().takeWhile(_ != '.') + ".sentences"
@@ -42,12 +46,6 @@ object CluewebExtractorMain extends App {
         val file = new File(path)
         require(file.exists(), "file does not exist: " + path)
         config.copy(inputFiles = (config.inputFiles :+ file))
-      },
-
-      opt("profile-dir", "profile directory") { (path: String, config: Config) =>
-        val file = new File(path)
-        require(file.exists, "directory does not exist: " + path)
-        config.copy(profileDirectory = file)
       },
 
       opt("output-dir", "output directory") { (path: String, config: Config) =>
@@ -71,9 +69,13 @@ object CluewebExtractorMain extends App {
             val warcIt = new WarcRecordIterator(new DataInputStream(new BufferedInputStream(is)))
             logger.info("Successfully created new warc iterator")
 
-            val garbager = new GarbageFilter(config.profileDirectory)
+            val garbager = new GarbageFilter()
             val nlpSentencer = new OpenNlpSentencer("en-sent.bin")
-            val hse = new HtmlSentenceExtractor(nlpSentencer)
+            val hse = new HtmlSentenceExtractor()
+            hse.addMapper(new BracketsRemover());
+            hse.addMapper(new SentenceEndFilter());
+            hse.addMapper(new SentenceStartFilter());
+            hse.addMapper(SentenceLengthFilter.minFilter(4));
 
             var lastDocument = 0
             var nanos = System.nanoTime()
@@ -82,7 +84,7 @@ object CluewebExtractorMain extends App {
               warc <- warcIt.flatten
               if warc.warcType.equals("response")
 
-              sentences = hse.extractCandidates(warc.payload.trim)
+              sentences = hse.extract(warc.payload.trim)
 
               // iterate over sentences
               i <- 0 until sentences.length
