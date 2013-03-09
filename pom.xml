@@ -10,19 +10,6 @@
   <name>cluewebextractor</name>
   <url>http://maven.apache.org</url>
 
-  <repositories>
-    <!-- for scala io -->
-    <repository>
-      <id>Typesafe Repository</id>
-      <url>http://repo.typesafe.com/typesafe/releases/</url>
-    </repository>
-    <!-- boilerpipe repo -->
-    <repository>
-      <id>boilerpipe-m2-repo</id>
-      <url>https://boilerpipe.googlecode.com/svn/repo/</url>
-    </repository>
-  </repositories>
-
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
@@ -50,38 +37,11 @@
       <artifactId>scala-library</artifactId>
       <version>2.9.2</version>
     </dependency>
-    <!-- scala io -->
-    <dependency>
-      <groupId>com.github.scala-incubator.io</groupId>
-      <artifactId>scala-io-core_2.9.2</artifactId>
-      <version>0.4.1</version>
-    </dependency>
-    <dependency>
-      <groupId>com.github.scala-incubator.io</groupId>
-      <artifactId>scala-io-file_2.9.2</artifactId>
-      <version>0.4.1</version>
-    </dependency>
     <!-- nlp sentencer -->
     <dependency>
       <groupId>edu.washington.cs.knowitall.nlptools</groupId>
       <artifactId>nlptools-sentence-opennlp_2.9.2</artifactId>
       <version>2.3.0</version>
-    </dependency>
-    <!-- boilerpipe -->
-    <dependency>
-      <groupId>de.l3s.boilerpipe</groupId>
-      <artifactId>boilerpipe</artifactId>
-      <version>1.2.0</version>
-    </dependency>
-    <dependency>
-      <groupId>net.sourceforge.nekohtml</groupId>
-      <artifactId>nekohtml</artifactId>
-      <version>1.9.17</version>
-    </dependency>
-    <dependency>
-      <groupId>xerces</groupId>
-      <artifactId>xercesImpl</artifactId>
-      <version>2.9.1</version>
     </dependency>
     <!-- jsoup, for cleaning input -->
     <dependency>
@@ -89,12 +49,6 @@
       <artifactId>jsoup</artifactId>
       <version>1.7.1</version>
     </dependency>
-    <!-- for language detection -->
-    <dependency>
-      <groupId>com.cybozu.labs</groupId>
-      <artifactId>langdetect</artifactId>
-    <version>1.1-20120112</version>
-</dependency>
   </dependencies>
   
   <build>
