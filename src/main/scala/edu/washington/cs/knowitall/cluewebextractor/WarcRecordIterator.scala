@@ -116,6 +116,7 @@ class WarcRecordIterator(dis: DataInputStream) extends Iterator[Option[WarcRecor
   }
 
   // Gets the next line of input and stores it in current.
+  // Returns null on EOF.
   private def nextLine(): String = {
     current = dis.readLine()
     current
