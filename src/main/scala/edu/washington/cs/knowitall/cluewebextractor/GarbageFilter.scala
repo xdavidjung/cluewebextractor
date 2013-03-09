@@ -4,7 +4,7 @@ import scala.util.matching.Regex;
 
 // this class contains a number of methods that detect garbage in sentences
 // taken from the web.
-class GarbageFilter(dir: String) {
+class GarbageFilter() {
 
   // removes series of extraneous whitespace in the input sentence
   def removeWhitespace(input: String): String = {
@@ -13,20 +13,26 @@ class GarbageFilter(dir: String) {
 
   // returns true if input contains HTML content
   def containsHtml(input: String): Boolean = {
-    input.startsWith("HTTP/1.1") ||  // is an HTTP request
-    input.contains("</") ||  // closing tags
-    input.contains("/>") ||  // self-closing tags
-    input.contains("<a href=") ||  // anchor tags
-    input.matches(".*<.{1,4}>.*")  // opening tags, 1-4 chars
+    input.startsWith("HTTP/1.1") || // is an HTTP request
+      input.contains("</") || // closing tags
+      input.contains("/>") || // self-closing tags
+      input.contains("<a href=") || // anchor tags
+      input.matches(".*<.{1,4}>.*") // opening tags, 1-4 chars
   }
 
   // returns true if input contains less than six words (detected by the
   // number of spaces in input)
   def tooShort(input: String): Boolean = {
-    // split on whitespace and count what's left
-    val split = input.split("\\s+");
-
-    split.length < 6
+    // iterate through and find spaces
+    var numSpaces = 0
+    for {
+      c <- input
+      if c == ' '
+    } {
+      numSpaces += 1
+      if (numSpaces >= 5) return false
+    }
+    true
   }
 
   // returns true if the input is too long: more than 300 chars.
