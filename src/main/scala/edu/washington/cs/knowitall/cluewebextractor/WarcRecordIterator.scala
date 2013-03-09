@@ -44,24 +44,19 @@ class WarcRecordIterator(dis: DataInputStream) extends Iterator[Option[WarcRecor
 
     // a warc file has a next warcEntry if we can find a line in fileBytes that
     // is equal to recordStarter
-    while (!current.equals(WarcRecordIterator.recordStarter) && valid) {
+    while (valid && !current.equals(WarcRecordIterator.recordStarter)) {
       nextLine()
-      if (current equals null) {
+      if (current == null) {
         logger.info("Reached end of file at document " + currentDocument +
-                    "/" + numberOfDocuments)
+          "/" + numberOfDocuments)
         if (currentDocument != numberOfDocuments) {
           logger.error("No more entries but currentDocument is not " +
-                       "numberOfDocuments: " + currentDocument + "/" +
-                       numberOfDocuments)
+            "numberOfDocuments: " + currentDocument + "/" +
+            numberOfDocuments)
         }
         valid = false
       }
     }
-
-    if (!current.equals(WarcRecordIterator.recordStarter)) {
-      valid = false
-    }
-
     valid
   }
 
@@ -73,7 +68,7 @@ class WarcRecordIterator(dis: DataInputStream) extends Iterator[Option[WarcRecor
     }
 
     logger.debug("Getting next WARC record. Current document: " +
-                currentDocument)
+      currentDocument)
 
     // Grab lines and process fields until we hit the end of block indicator
     var warcFieldMap = Map.empty[String, String]
@@ -84,7 +79,7 @@ class WarcRecordIterator(dis: DataInputStream) extends Iterator[Option[WarcRecor
       // all lines until the end of the block should be splittable
       if (splitLine.length != 2) {
         logger.error("Bad WARC header: no ': ' sequence in document: " +
-                     currentDocument + " on line: " + current)
+          currentDocument + " on line: " + current)
         return None
       }
 
@@ -103,13 +98,14 @@ class WarcRecordIterator(dis: DataInputStream) extends Iterator[Option[WarcRecor
     } catch {
       case e: NumberFormatException =>
         logger.error("Unable to convert content length to int with string: " +
-                     warcFieldMap(WarcRecordIterator.contentLengthIndicator) +
-                     " in document: " + currentDocument)
+          warcFieldMap(WarcRecordIterator.contentLengthIndicator) +
+          " in document: " + currentDocument)
         return None
     }
 
-    if (byteBuffer.length < contentLength) {
-      byteBuffer = new Array[Byte](contentLength)
+    // skip if greater than 1MB
+    if (contentLength > (1024 * 1024)) {
+      return None
     }
 
     // Get the payload
@@ -131,12 +127,12 @@ class WarcRecordIterator(dis: DataInputStream) extends Iterator[Option[WarcRecor
     // just a quick check that this is indeed a warc file:
     if (!(nextLine() equals WarcRecordIterator.recordStarter)) {
       logger.error("Input first line is not " +
-                   WarcRecordIterator.recordStarter + " but rather " + current)
+        WarcRecordIterator.recordStarter + " but rather " + current)
       valid = false
     }
     if (!(nextLine() equals WarcRecordIterator.headerType)) {
       logger.error("Input second line is not " +
-                   WarcRecordIterator.headerType + " but rather " + current)
+        WarcRecordIterator.headerType + " but rather " + current)
       valid = false
     }
 
@@ -144,14 +140,14 @@ class WarcRecordIterator(dis: DataInputStream) extends Iterator[Option[WarcRecor
     // the file iterator at the beginning of the first actual warc record
     currentDocument = 0
     nextLine()
-    while(!current.equals(WarcRecordIterator.recordStarter)) {
+    while (!current.equals(WarcRecordIterator.recordStarter)) {
       if (current startsWith WarcRecordIterator.numDocField) {
         try {
           numberOfDocuments = current.split(": ")(1).toInt
         } catch {
           case e: NumberFormatException =>
             logger.error("Unable to convert document total to int with " +
-                         "string: " + current.split(": ")(1))
+              "string: " + current.split(": ")(1))
         }
       }
       nextLine()
