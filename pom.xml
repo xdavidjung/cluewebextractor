@@ -23,12 +23,6 @@
   </properties>
 
   <dependencies>
-    <!-- reverb-core -->
-    <dependency>
-      <groupId>edu.washington.cs.knowitall</groupId>
-      <artifactId>reverb-core</artifactId>
-      <version>1.4.1</version>
-    </dependency>
     <!-- boilerpipe -->
     <dependency>
       <groupId>de.l3s.boilerpipe</groupId>
