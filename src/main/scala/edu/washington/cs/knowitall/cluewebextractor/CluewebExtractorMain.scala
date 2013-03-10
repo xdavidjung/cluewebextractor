@@ -4,11 +4,6 @@ import de.l3s.boilerpipe.extractors
 import edu.washington.cs.knowitall.tool.sentence.OpenNlpSentencer
 import edu.washington.cs.knowitall.common.Timing
 import edu.washington.cs.knowitall.common.Resource
-import edu.washington.cs.knowitall.extractor.HtmlSentenceExtractor
-import edu.washington.cs.knowitall.extractor.mapper.BracketsRemover
-import edu.washington.cs.knowitall.extractor.mapper.SentenceEndFilter
-import edu.washington.cs.knowitall.extractor.mapper.SentenceLengthFilter
-import edu.washington.cs.knowitall.extractor.mapper.SentenceStartFilter
 import scala.collection.JavaConverters._
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -49,7 +44,6 @@ object CluewebExtractorMain extends App {
         require(file.exists(), "file does not exist: " + path)
         config.copy(inputFiles = (config.inputFiles :+ file))
       },
-
       opt("output-dir", "output directory") { (path: String, config: Config) =>
         val file = new File(path)
         require(file.exists, "directory does not exist: " + path)
@@ -80,12 +74,6 @@ object CluewebExtractorMain extends App {
             val nlpSentencer = new OpenNlpSentencer("en-sent.bin")
             val bp = new extractors.DefaultExtractor()
 
-            val hse = new HtmlSentenceExtractor()
-            hse.addMapper(new BracketsRemover());
-            hse.addMapper(new SentenceEndFilter());
-            hse.addMapper(new SentenceStartFilter());
-            hse.addMapper(SentenceLengthFilter.minFilter(4));
-
             var lastDocument = 0
             var nanos = System.nanoTime()
             for {
@@ -93,9 +81,8 @@ object CluewebExtractorMain extends App {
               warc <- warcIt.flatten
               if warc.warcType.equals("response")
             } {
-              // val piped = bp.getText(warc.payload.trim)
-              // val sentences = nlpSentencer.segmentTexts(piped)
-              val sentences = hse.extract(warc.payload.trim).asScala
+              val piped = bp.getText(warc.payload.trim)
+              val sentences = nlpSentencer.segmentTexts(piped)
 
               // iterate over sentences
               var i = 0
@@ -104,9 +91,9 @@ object CluewebExtractorMain extends App {
 
                 // apply garbage filter
                 sentence = garbager.removeWhitespace(s)
-                if !garbager.tooShort(sentence);
                 if !garbager.containsHtml(sentence);
-                if !garbager.tooLong(sentence)
+                if !garbager.tooLong(sentence);
+                if !garbager.tooShort(sentence)
               } {
                 if (warcIt.currentDocument % 100 == 0 &&
                     lastDocument != warcIt.currentDocument) {
@@ -123,6 +110,7 @@ object CluewebExtractorMain extends App {
                                i + "\t" +
                                sentence)
                 i += 1
+
               }
             }
           }
@@ -135,18 +123,16 @@ object CluewebExtractorMain extends App {
   }
 
   def usage {
-    "Usage1: gunzip -c <input.warc.gz> | java -jar " +
-      "<this.jar> <profiles/>\nUsage2: java -jar " +
-      "<this.jar> <profiles/> <input.warc>"
+    "Usage: java -jar <this.jar> <input.warc(.gz)>"
   }
 
   def openInputStream(file: File): InputStream = {
     if (file.getName endsWith ".gz") {
-      // then the user has passed in a filename
+      // then the user has passed in .warc.gz file
       logger.info("Opening zip file " + file)
       new GZIPInputStream(new FileInputStream(file))
     } else {
-      // then the user has passed in a filename
+      // then the user has passed in .warc file
       logger.info("Opening file " + file)
       new FileInputStream(file)
     }
