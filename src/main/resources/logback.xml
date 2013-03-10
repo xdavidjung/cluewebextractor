@@ -11,7 +11,7 @@
       <pattern>%level %logger %msg%n</pattern>
     </encoder>
   </appender>
-  <root level="DEBUG">
+  <root level="INFO">
     <appender-ref ref="FILE"/>
     <appender-ref ref="STDOUT"/>
   </root>
