@@ -7,12 +7,12 @@ import scala.collection.mutable
 // records will match up with those described at:
 //   http://bibnum.bnf.fr/WARC/WARC_ISO_28500_version1_latestdraft.pdf
 // @author David H Jung
-class WarcRecordIterator(fileIt: Iterator[String]) extends Iterator[WarcRecord] {
+class WarcRecordIterator(fileIt: Iterator[String]) extends Iterator[Option[WarcRecord]] {
   // The number of documents in this warc file
   private var numberOfDocuments: Int = -1
 
   // The current document. Used for debugging.
-  private var currentDocument: Int = -1
+  var currentDocument: Int = -1
 
   // The latest line that fileIt.next has returned.
   private var current: String = null
@@ -52,7 +52,7 @@ class WarcRecordIterator(fileIt: Iterator[String]) extends Iterator[WarcRecord] 
 
   // Returns the next WarcRecord in this file.
   // throws NoSuchElementException if there is no next WarcRecord.
-  def next(): WarcRecord = {
+  def next(): Option[WarcRecord] = {
     if (!hasNext) {
       throw new NoSuchElementException()
     }
@@ -73,7 +73,7 @@ class WarcRecordIterator(fileIt: Iterator[String]) extends Iterator[WarcRecord] 
                                      contentLengthIndicator).toInt
 
     // Get the payload: we know that we're finished with the payload when we:
-    //   Hit the end of the file, or 
+    //   Hit the end of the file, or
     //   Are at the beginning of a new record
 
     // note that contentLength is not the exact length of the input that we
@@ -88,7 +88,7 @@ class WarcRecordIterator(fileIt: Iterator[String]) extends Iterator[WarcRecord] 
     }
 
     currentDocument = currentDocument + 1
-    new WarcRecord(warcType, warcTrecId, sb.toString)
+    new Some(WarcRecord(warcType, warcTrecId, sb.toString))
   }
 
   // Opens the file given in the constructor and slurps up the warcinfo header
