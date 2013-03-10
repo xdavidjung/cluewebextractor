@@ -3,7 +3,6 @@ package edu.washington.cs.knowitall.cluewebextractor
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
-import java.io.BufferedInputStream
 import java.io.DataInputStream
 
 // This class provides a way to iterate over the WARC records in a ClueWeb12
@@ -12,7 +11,7 @@ import java.io.DataInputStream
 // http://bibnum.bnf.fr/WARC/WARC_ISO_28500_version1_latestdraft.pdf
 // @author David H Jung
 class WarcRecordIterator(dis: DataInputStream) extends Iterator[Option[WarcRecord]] {
-  var byteBuffer = new Array[Byte](1024 * 1024)
+  var byteBuffer = Array[Byte](0)
 
   // The number of documents in this warc file
   private var _numberOfDocuments: Int = -1
@@ -109,10 +108,13 @@ class WarcRecordIterator(dis: DataInputStream) extends Iterator[Option[WarcRecor
     }
 
     // Get the payload
+    byteBuffer = new Array[Byte](contentLength)
     dis.read(byteBuffer, 0, contentLength)
 
     currentDocument = currentDocument + 1
-    new Some(WarcRecord(warcType, warcTrecId, warcDate, warcUri, new String(byteBuffer, "UTF8")))
+    new Some(WarcRecord(warcType, warcTrecId, warcDate, warcUri,
+                        new String(byteBuffer, "UTF8")))
+
   }
 
   // Gets the next line of input and stores it in current.
