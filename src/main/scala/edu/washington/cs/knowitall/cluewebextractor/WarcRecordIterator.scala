@@ -79,6 +79,7 @@ class WarcRecordIterator(dis: DataInputStream) extends Iterator[Option[WarcRecor
       if (splitLine.length != 2) {
         logger.error("Bad WARC header: no ': ' sequence in document: " +
           currentDocument + " on line: " + current)
+        currentDocument += 1
         return None
       }
 
@@ -99,11 +100,14 @@ class WarcRecordIterator(dis: DataInputStream) extends Iterator[Option[WarcRecor
         logger.error("Unable to convert content length to int with string: " +
           warcFieldMap(WarcRecordIterator.contentLengthIndicator) +
           " in document: " + currentDocument)
+        currentDocument += 1
         return None
     }
 
     // skip if greater than 1MB
     if (contentLength > (1024 * 1024)) {
+      logger.info("Skipping document " + warcTrecId + ": > 1MB")
+      currentDocument += 1
       return None
     }
 
@@ -115,7 +119,7 @@ class WarcRecordIterator(dis: DataInputStream) extends Iterator[Option[WarcRecor
     byteBuffer = new Array[Byte](contentLength)
     dis.read(byteBuffer, 0, contentLength)
 
-    currentDocument = currentDocument + 1
+    currentDocument += 1
     new Some(WarcRecord(warcType, warcTrecId, warcDate, warcUri,
                         new String(byteBuffer, 0, contentLength, "UTF8")))
 
