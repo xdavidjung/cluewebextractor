@@ -132,7 +132,10 @@ object CluewebExtractorMain extends App {
               } catch {
                 case e: Exception =>
                   logger.error("Boilerpipe exception: \n" + e)
-                ""
+                  ""
+                case _ =>
+                  logger.error("Boilerpipe error")
+                  ""
               }
 
               val sentences = nlpSentencer.segmentTexts(piped)
