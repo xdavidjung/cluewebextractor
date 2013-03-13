@@ -107,13 +107,17 @@ class WarcRecordIterator(dis: DataInputStream) extends Iterator[Option[WarcRecor
       return None
     }
 
+    if (byteBuffer.length < contentLength) {
+      byteBuffer = new Array[Byte](contentLength)
+    }
+
     // Get the payload
     byteBuffer = new Array[Byte](contentLength)
     dis.read(byteBuffer, 0, contentLength)
 
     currentDocument = currentDocument + 1
     new Some(WarcRecord(warcType, warcTrecId, warcDate, warcUri,
-                        new String(byteBuffer, "UTF8")))
+                        new String(byteBuffer, 0, contentLength, "UTF8")))
 
   }
 

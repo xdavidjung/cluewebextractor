@@ -28,13 +28,6 @@ object CluewebExtractorMain extends App {
   case class Config(
     inputFiles: Seq[File] = Seq.empty,
     outputDirectory: Option[File] = None) {
-    def outputFile(inputFile: File): File = {
-      val name = inputFile.getName().takeWhile(_ != '.') + ".sentences"
-      outputDirectory match {
-        case Some(dir) => new File(dir, name)
-        case None => new File(name)
-      }
-    }
   }
 
   val parser = new scopt.immutable.OptionParser[Config]("cweb") {
@@ -47,6 +40,7 @@ object CluewebExtractorMain extends App {
       opt("output-dir", "output directory") { (path: String, config: Config) =>
         val file = new File(path)
         require(file.exists, "directory does not exist: " + path)
+        require(file.isDirectory, "file is not a directory: " + path)
         config.copy(outputDirectory = Some(file))
       })
   }
@@ -57,11 +51,53 @@ object CluewebExtractorMain extends App {
   }
 
   def run(config: Config) {
+    def makeOutputFileName(inputFile: File) = {
+      inputFile.getName().takeWhile(_ != '.') + ".sentences"
+    }
+    // expand input directories to warc files
+    // first part is the input file, second is the output file
+    val files: Iterable[(File, File)] = config.inputFiles.flatMap { file =>
+      import org.apache.commons.io.FileUtils
+      import scala.collection.JavaConverters._
+
+      // if it's a directory, search subdirectories
+      if (file.isDirectory) {
+        val files: Iterable[File] =
+          FileUtils.listFiles(file, Array("gz"), true).asScala
+        files.map { inputFile =>
+          val subdirectory = inputFile.getParentFile.getPath.drop(file.getParentFile.getPath.length).drop(1)
+
+          // build the output file
+          val outputDirectory = config.outputDirectory match {
+            case Some(dir) => new File(dir, subdirectory)
+            case None => new File(subdirectory)
+          }
+
+          // create the file's parent directory if it doesn't exist
+          outputDirectory.mkdirs
+          println(outputDirectory)
+
+          val outputFileName = makeOutputFileName(inputFile)
+          val outputFile = new File(outputDirectory, outputFileName)
+
+          (inputFile, outputFile)
+        }
+      }
+      else {
+        val outputFileName = makeOutputFileName(file)
+        val outputFile = config.outputDirectory match {
+          case Some(dir) => new File(dir, outputFileName)
+          case None => new File(outputFileName)
+        }
+        Some(file, outputFile)
+      }
+    }
+
     // get the warc record input and create the iterator
-    for (file <- config.inputFiles) {
+    for ((inputFile, outputFile) <- files) {
       val ns = Timing.time {
-        Resource.using(openInputStream(file)) { is =>
-          Resource.using(new PrintWriter(config.outputFile(file), "UTF8")) {
+        Resource.using(openInputStream(inputFile)) { is =>
+          Resource.using(new PrintWriter(outputFile, "UTF8")) {
             writer =>
               val warcIt = new WarcRecordIterator(
                              new DataInputStream(
@@ -81,6 +117,16 @@ object CluewebExtractorMain extends App {
               warc <- warcIt.flatten
               if warc.warcType.equals("response")
             } {
+              if (warcIt.currentDocument % 1000 == 0 &&
+                  lastDocument != warcIt.currentDocument) {
+                logger.info("Processing document: " + warcIt.currentDocument +
+                            " (" +
+                            ("%.2f" format (warcIt.currentDocument.toDouble /
+                            ((System.nanoTime - nanos).toDouble /
+                            Timing.Seconds.divisor.toDouble))) + " doc/sec)")
+                lastDocument = warcIt.currentDocument
+              }
+
               val piped = bp.getText(warc.payload.trim)
               val sentences = nlpSentencer.segmentTexts(piped)
 
@@ -95,15 +141,6 @@ object CluewebExtractorMain extends App {
                 if !garbager.tooLong(sentence);
                 if !garbager.tooShort(sentence)
               } {
-                if (warcIt.currentDocument % 100 == 0 &&
-                    lastDocument != warcIt.currentDocument) {
-                  logger.info("Processing: " + warcIt.currentDocument + " (" +
-                              ("%.2f" format (warcIt.currentDocument.toDouble /
-                              ((System.nanoTime - nanos).toDouble /
-                              Timing.Seconds.divisor.toDouble))) + " doc/sec)")
-                  lastDocument = warcIt.currentDocument
-                }
-
                 writer.println(warc.warcTrecId + "\t" +
                                warc.warcUri + "\t" +
                                warc.warcDate + "\t" +
@@ -117,8 +154,8 @@ object CluewebExtractorMain extends App {
         }
       }
 
-      logger.info("Processed file '" + file.getName + "' in: " +
-                  Timing.Seconds.format(ns))
+      logger.info("Processed file '" + inputFile.getName + "' -> '"
+          + outputFile.getName + "' in: " + Timing.Seconds.format(ns))
     }
   }
 
