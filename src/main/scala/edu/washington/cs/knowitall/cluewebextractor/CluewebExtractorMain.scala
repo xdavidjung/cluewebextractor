@@ -127,7 +127,14 @@ object CluewebExtractorMain extends App {
                 lastDocument = warcIt.currentDocument
               }
 
-              val piped = bp.getText(warc.payload.trim)
+              val piped = try {
+                bp.getText(warc.payload.trim)
+              } catch {
+                case e: Exception =>
+                  logger.error("Boilerpipe exception: \n" + e)
+                ""
+              }
+
               val sentences = nlpSentencer.segmentTexts(piped)
 
               // iterate over sentences
