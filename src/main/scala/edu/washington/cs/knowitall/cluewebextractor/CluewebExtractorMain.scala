@@ -67,8 +67,7 @@ object CluewebExtractorMain extends App {
       inputFile.getName().takeWhile(_ != '.') + ".sentences"
     }
 
-    // Expand input directories to warc files.
-    // First part is the input file, second is the output file
+    // Files contains (inputFile, outputFile) pairs.
     val files: Iterable[(File, File)] = config.inputFiles.flatMap { file =>
       import org.apache.commons.io.FileUtils
       import scala.collection.JavaConverters._
@@ -112,76 +111,75 @@ object CluewebExtractorMain extends App {
       }
     }
 
-    // get the warc record input and create the iterator
+    // Create the warc record processors
+    val garbager = new GarbageFilter()
+    val nlpSentencer = new OpenNlpSentencer("en-sent.bin")
+    val bp = new extractors.DefaultExtractor()
+
+    // For each (input, output) pair, get a warc record iterator for the input
+    // and write the corresponding extracted payload to the output
     for ((inputFile, outputFile) <- files) {
       val ns = Timing.time {
-        Resource.using(openInputStream(inputFile)) { is =>
-          Resource.using(new PrintWriter(outputFile, "UTF8")) {
-            writer =>
-              val warcIt = new WarcRecordIterator(
-                             new DataInputStream(
-                             new BufferedInputStream(is))
-                           )
-            logger.info("Successfully created new warc iterator")
+      Resource.using(openInputStream(inputFile)) { is =>
+      Resource.using(new PrintWriter(outputFile, "UTF8")) { writer =>
 
-            val garbager = new GarbageFilter()
+        val warcIt = new WarcRecordIterator(
+                       new DataInputStream(
+                       new BufferedInputStream(is))
+                     )
+        logger.info("Successfully created new warc iterator")
 
-            val nlpSentencer = new OpenNlpSentencer("en-sent.bin")
-            val bp = new extractors.DefaultExtractor()
+        var lastDocument = 0
+        var nanos = System.nanoTime()
+        for {
+          // Iterate over warc responses
+          warc <- warcIt.flatten
+          if warc.warcType.equals("response")
+        } {
+          if (warcIt.currentDocument % 1000 == 0 &&
+              lastDocument != warcIt.currentDocument) {
+            logger.info("Processing document: " + warcIt.currentDocument +
+                        " (" +
+                        ("%.2f" format (warcIt.currentDocument.toDouble /
+                        ((System.nanoTime - nanos).toDouble /
+                        Timing.Seconds.divisor.toDouble))) + " doc/sec)")
+            lastDocument = warcIt.currentDocument
+          }
 
-            var lastDocument = 0
-            var nanos = System.nanoTime()
-            for {
-              // iterate over warc responses
-              warc <- warcIt.flatten
-              if warc.warcType.equals("response")
-            } {
-              if (warcIt.currentDocument % 1000 == 0 &&
-                  lastDocument != warcIt.currentDocument) {
-                logger.info("Processing document: " + warcIt.currentDocument +
-                            " (" +
-                            ("%.2f" format (warcIt.currentDocument.toDouble /
-                            ((System.nanoTime - nanos).toDouble /
-                            Timing.Seconds.divisor.toDouble))) + " doc/sec)")
-                lastDocument = warcIt.currentDocument
-              }
+          val piped = try {
+            bp.getText(warc.payload.trim)
+          } catch {
+            case e: Exception =>
+              logger.error("Boilerpipe exception: \n" + e)
+              ""
+            case _ =>
+              logger.error("Boilerpipe error")
+              ""
+          }
 
-              val piped = try {
-                bp.getText(warc.payload.trim)
-              } catch {
-                case e: Exception =>
-                  logger.error("Boilerpipe exception: \n" + e)
-                  ""
-                case _ =>
-                  logger.error("Boilerpipe error")
-                  ""
-              }
+          val sentences = nlpSentencer.segmentTexts(piped)
 
-              val sentences = nlpSentencer.segmentTexts(piped)
+          // iterate over sentences
+          var i = 0
+          for {
+            s <- sentences
 
-              // iterate over sentences
-              var i = 0
-              for {
-                s <- sentences
+            // apply garbage filter
+            sentence = garbager.removeWhitespace(s)
+            if !garbager.containsHtml(sentence);
+            if !garbager.tooLong(sentence);
+            if !garbager.tooShort(sentence)
+          } {
+            writer.println(warc.warcTrecId + "\t" +
+                           warc.warcUri + "\t" +
+                           warc.warcDate + "\t" +
+                           i + "\t" +
+                           sentence)
+            i += 1
 
-                // apply garbage filter
-                sentence = garbager.removeWhitespace(s)
-                if !garbager.containsHtml(sentence);
-                if !garbager.tooLong(sentence);
-                if !garbager.tooShort(sentence)
-              } {
-                writer.println(warc.warcTrecId + "\t" +
-                               warc.warcUri + "\t" +
-                               warc.warcDate + "\t" +
-                               i + "\t" +
-                               sentence)
-                i += 1
-
-              }
-            }
           }
         }
-      }
+      }}}
 
       logger.info("Processed file '" + inputFile.getName + "' -> '"
           + outputFile.getName + "' in: " + Timing.Seconds.format(ns))
