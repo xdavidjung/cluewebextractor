@@ -19,17 +19,26 @@ import java.io.InputStreamReader
 import java.io.DataInputStream
 import java.util.zip.GZIPInputStream
 
-// CLI that takes a filename as an argument and outputs the extracted clueweb
-// information.
-// takes a second argument for the profiles needed by the language detection
-// module.
+/**
+ * CLI that takes as input either a .warc file or directory containing .warc
+ * files and outputs the extracted payload content in either a default or
+ * specified directory.
+ *
+ * If the user inputs a directory that contains a .warc file with an already-
+ * existing corresponding output file, it will be skipped.
+ *
+ * If the user inputs a single .warc file with an already-existing
+ * corresponding output file, it will be overwritten.
+ */
 object CluewebExtractorMain extends App {
   val logger = LoggerFactory.getLogger(this.getClass)
+
   case class Config(
     inputFiles: Seq[File] = Seq.empty,
     outputDirectory: Option[File] = None) {
   }
 
+  // Defines the command line arguments.
   val parser = new scopt.immutable.OptionParser[Config]("cweb") {
     def options = Seq(
       arglist("<input-files>", "pattern file") { (path: String, config: Config) =>
@@ -51,11 +60,15 @@ object CluewebExtractorMain extends App {
   }
 
   def run(config: Config) {
+
+    // Output filename is the input filename up to and including the first dot
+    // with "sentences" as the extension.
     def makeOutputFileName(inputFile: File) = {
       inputFile.getName().takeWhile(_ != '.') + ".sentences"
     }
-    // expand input directories to warc files
-    // first part is the input file, second is the output file
+
+    // Expand input directories to warc files.
+    // First part is the input file, second is the output file
     val files: Iterable[(File, File)] = config.inputFiles.flatMap { file =>
       import org.apache.commons.io.FileUtils
       import scala.collection.JavaConverters._
@@ -64,7 +77,8 @@ object CluewebExtractorMain extends App {
       if (file.isDirectory) {
         val files: Iterable[File] =
           FileUtils.listFiles(file, Array("gz"), true).asScala
-        files.map { inputFile =>
+
+        files.flatMap { inputFile =>
           val subdirectory = inputFile.getParentFile.getPath.drop(file.getParentFile.getPath.length).drop(1)
 
           // build the output file
@@ -75,15 +89,20 @@ object CluewebExtractorMain extends App {
 
           // create the file's parent directory if it doesn't exist
           outputDirectory.mkdirs
-          println(outputDirectory)
 
           val outputFileName = makeOutputFileName(inputFile)
           val outputFile = new File(outputDirectory, outputFileName)
 
-          (inputFile, outputFile)
+          // if the output file already exists, skip by returning None
+          if (outputFile.exists) {
+            None
+          } else {
+            Some(inputFile, outputFile)
+          }
         }
-      }
-      else {
+
+      } else {
+        // the user input a simple .warc file
         val outputFileName = makeOutputFileName(file)
         val outputFile = config.outputDirectory match {
           case Some(dir) => new File(dir, outputFileName)
