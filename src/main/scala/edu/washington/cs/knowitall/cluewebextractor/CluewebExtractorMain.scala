@@ -20,6 +20,22 @@ import java.io.DataInputStream
 import java.util.zip.GZIPInputStream
 
 /**
+ *    Copyright 2013 David H Jung
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * ----------------------- END OF LICENSE INFO --------------------------------
+ *
  * CLI that takes as input either a .warc file or directory containing .warc
  * files and outputs the extracted payload content in either a default or
  * specified directory.
@@ -29,6 +45,10 @@ import java.util.zip.GZIPInputStream
  *
  * If the user inputs a single .warc file with an already-existing
  * corresponding output file, it will be overwritten.
+ *
+ * On bad input or unexpected errors, this program will choose to log the error
+ * and skip over the file (or document, depending on the granularity of the
+ * error) rather than stop execution.
  */
 object CluewebExtractorMain extends App {
   val logger = LoggerFactory.getLogger(this.getClass)
@@ -131,11 +151,13 @@ object CluewebExtractorMain extends App {
 
         var lastDocument = 0
         var nanos = System.nanoTime()
-        for {
-          // Iterate over warc responses
-          warc <- warcIt.flatten
-          if warc.warcType.equals("response")
-        } {
+
+        // Iterate over warc documents
+        for (warc <- warcIt.flatten;
+             if warc.warcType.equals("response") &&
+                !warc.payload.equals("")) {
+          // If this document is a multiple of a thousand, note it in the log
+          // and the current documents / second
           if (warcIt.currentDocument % 1000 == 0 &&
               lastDocument != warcIt.currentDocument) {
             logger.info("Processing document: " + warcIt.currentDocument +
@@ -146,14 +168,13 @@ object CluewebExtractorMain extends App {
             lastDocument = warcIt.currentDocument
           }
 
+          // piped stores the payload after being passed through boilerpipe
           val piped = try {
             bp.getText(warc.payload.trim)
           } catch {
-            case e: Exception =>
-              logger.error("Boilerpipe exception: \n" + e)
-              ""
-            case _ =>
-              logger.error("Boilerpipe error")
+            case e: Throwable =>
+              logger.error("Error during boilerpipe extraction.\n" +
+                           "Skipping document\n" + e.getStackTraceString)
               ""
           }
 
