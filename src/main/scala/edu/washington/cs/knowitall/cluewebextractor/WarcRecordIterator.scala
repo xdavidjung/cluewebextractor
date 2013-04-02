@@ -5,11 +5,17 @@ import org.slf4j.LoggerFactory
 
 import java.io.DataInputStream
 
-// This class provides a way to iterate over the WARC records in a ClueWeb12
-// .warc file. This means that it is assumed that the format of the WARC
-// records will match up with those described at:
-// http://bibnum.bnf.fr/WARC/WARC_ISO_28500_version1_latestdraft.pdf
-// @author David H Jung
+/**
+ * This class provides a way to iterate over the WARC records in a ClueWeb12
+ * .warc file. This means that it is assumed that the format of the WARC
+ * records will match up with those described at:
+ *
+ *   http://bibnum.bnf.fr/WARC/WARC_ISO_28500_version1_latestdraft.pdf
+ *
+ * It is possible for an error to occur when reading from the .warc file. In
+ * this relatively rare case, the iterator will become invalid; if this occurs
+ * in a call to next(), the call will return a WarcRecord with no payload.
+ */
 class WarcRecordIterator(dis: DataInputStream) extends Iterator[Option[WarcRecord]] {
   var byteBuffer = Array[Byte](0)
 
@@ -46,7 +52,7 @@ class WarcRecordIterator(dis: DataInputStream) extends Iterator[Option[WarcRecor
     while (valid && !current.equals(WarcRecordIterator.recordStarter)) {
       nextLine()
       if (current == null) {
-        logger.info("Reached end of file at document " + currentDocument +
+        logger.info("Finished reading warc file at document " + currentDocument +
           "/" + numberOfDocuments)
         if (currentDocument != numberOfDocuments) {
           logger.error("No more entries but currentDocument is not " +
@@ -93,7 +99,7 @@ class WarcRecordIterator(dis: DataInputStream) extends Iterator[Option[WarcRecor
     val warcDate = warcFieldMap(WarcRecordIterator.dateIndicator)
     val warcUri = warcFieldMap(WarcRecordIterator.uriIndicator)
 
-    val contentLength = try {
+    var contentLength = try {
       warcFieldMap(WarcRecordIterator.contentLengthIndicator).toInt
     } catch {
       case e: NumberFormatException =>
@@ -104,20 +110,19 @@ class WarcRecordIterator(dis: DataInputStream) extends Iterator[Option[WarcRecor
         return None
     }
 
-    // skip if greater than 1MB
-    if (contentLength > (1024 * 1024)) {
-      logger.info("Skipping document " + warcTrecId + ": > 1MB")
-      currentDocument += 1
-      return None
-    }
-
-    if (byteBuffer.length < contentLength) {
-      byteBuffer = new Array[Byte](contentLength)
-    }
-
     // Get the payload
     byteBuffer = new Array[Byte](contentLength)
-    dis.read(byteBuffer, 0, contentLength)
+    try {
+      dis.read(byteBuffer, 0, contentLength)
+    } catch {
+      case e: Throwable =>
+        logger.error("Exception caught while reading payload from .warc " +
+                     "file.\nCurrent document: " + currentDocument + "\n" +
+                     e.getStackTraceString)
+        valid = false;
+        byteBuffer = new Array[Byte](0)
+        contentLength = 0
+    }
 
     currentDocument += 1
     new Some(WarcRecord(warcType, warcTrecId, warcDate, warcUri,
@@ -126,9 +131,18 @@ class WarcRecordIterator(dis: DataInputStream) extends Iterator[Option[WarcRecor
   }
 
   // Gets the next line of input and stores it in current.
-  // Returns null on EOF.
+  // Returns null on EOF or error.
   private def nextLine(): String = {
-    current = dis.readLine()
+    current = try {
+      dis.readLine()
+    } catch {
+      case e: Throwable =>
+        logger.error("Error while reading next line from .warc file.\n" +
+                     "Current document: " + currentDocument + "\n" +
+                     e.getStackTraceString)
+        valid = false;
+        ""
+    }
     current
   }
 
@@ -169,6 +183,9 @@ class WarcRecordIterator(dis: DataInputStream) extends Iterator[Option[WarcRecor
   }
 }
 
+/**
+ * Companion object used to store the various content indicators in .warc files
+ */
 object WarcRecordIterator {
   // When found alone, indicates the start of a new WARC record.
   val recordStarter = "WARC/1.0"
