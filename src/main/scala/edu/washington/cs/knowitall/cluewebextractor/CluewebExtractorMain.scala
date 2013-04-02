@@ -133,7 +133,7 @@ object CluewebExtractorMain extends App {
 
     // Create the warc record processors
     val garbager = new GarbageFilter()
-    val nlpSentencer = new OpenNlpSentencer("en-sent.bin")
+    val nlpSentencer = new OpenNlpSentencer()
     val bp = new extractors.DefaultExtractor()
 
     // For each (input, output) pair, get a warc record iterator for the input
