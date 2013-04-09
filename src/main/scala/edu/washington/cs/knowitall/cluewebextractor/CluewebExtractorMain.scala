@@ -19,24 +19,46 @@ import java.io.InputStreamReader
 import java.io.DataInputStream
 import java.util.zip.GZIPInputStream
 
-// CLI that takes a filename as an argument and outputs the extracted clueweb
-// information.
-// takes a second argument for the profiles needed by the language detection
-// module.
+/**
+ *    Copyright 2013 David H Jung
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * ----------------------- END OF LICENSE INFO --------------------------------
+ *
+ * CLI that takes as input either a .warc file or directory containing .warc
+ * files and outputs the extracted payload content in either a default or
+ * specified directory.
+ *
+ * If the user inputs a directory that contains a .warc file with an already-
+ * existing corresponding output file, it will be skipped.
+ *
+ * If the user inputs a single .warc file with an already-existing
+ * corresponding output file, it will be overwritten.
+ *
+ * On bad input or unexpected errors, this program will choose to log the error
+ * and skip over the file (or document, depending on the granularity of the
+ * error) rather than stop execution.
+ */
 object CluewebExtractorMain extends App {
   val logger = LoggerFactory.getLogger(this.getClass)
+
   case class Config(
     inputFiles: Seq[File] = Seq.empty,
     outputDirectory: Option[File] = None) {
-    def outputFile(inputFile: File): File = {
-      val name = inputFile.getName().takeWhile(_ != '.') + ".sentences"
-      outputDirectory match {
-        case Some(dir) => new File(dir, name)
-        case None => new File(name)
-      }
-    }
   }
 
+  // Defines the command line arguments.
   val parser = new scopt.immutable.OptionParser[Config]("cweb") {
     def options = Seq(
       arglist("<input-files>", "pattern file") { (path: String, config: Config) =>
@@ -47,6 +69,7 @@ object CluewebExtractorMain extends App {
       opt("output-dir", "output directory") { (path: String, config: Config) =>
         val file = new File(path)
         require(file.exists, "directory does not exist: " + path)
+        require(file.isDirectory, "file is not a directory: " + path)
         config.copy(outputDirectory = Some(file))
       })
   }
@@ -57,68 +80,130 @@ object CluewebExtractorMain extends App {
   }
 
   def run(config: Config) {
-    // get the warc record input and create the iterator
-    for (file <- config.inputFiles) {
-      val ns = Timing.time {
-        Resource.using(openInputStream(file)) { is =>
-          Resource.using(new PrintWriter(config.outputFile(file), "UTF8")) {
-            writer =>
-              val warcIt = new WarcRecordIterator(
-                             new DataInputStream(
-                             new BufferedInputStream(is))
-                           )
-            logger.info("Successfully created new warc iterator")
 
-            val garbager = new GarbageFilter()
+    // Output filename is the input filename up to and including the first dot
+    // with "sentences" as the extension.
+    def makeOutputFileName(inputFile: File) = {
+      inputFile.getName().takeWhile(_ != '.') + ".sentences"
+    }
 
-            val nlpSentencer = new OpenNlpSentencer("en-sent.bin")
-            val bp = new extractors.DefaultExtractor()
+    // Files contains (inputFile, outputFile) pairs.
+    val files: Iterable[(File, File)] = config.inputFiles.flatMap { file =>
+      import org.apache.commons.io.FileUtils
+      import scala.collection.JavaConverters._
 
-            var lastDocument = 0
-            var nanos = System.nanoTime()
-            for {
-              // iterate over warc responses
-              warc <- warcIt.flatten
-              if warc.warcType.equals("response")
-            } {
-              val piped = bp.getText(warc.payload.trim)
-              val sentences = nlpSentencer.segmentTexts(piped)
+      // if it's a directory, search subdirectories
+      if (file.isDirectory) {
+        val files: Iterable[File] =
+          FileUtils.listFiles(file, Array("gz"), true).asScala
 
-              // iterate over sentences
-              var i = 0
-              for {
-                s <- sentences
+        files.flatMap { inputFile =>
+          val subdirectory = inputFile.getParentFile.getPath.drop(file.getParentFile.getPath.length).drop(1)
 
-                // apply garbage filter
-                sentence = garbager.removeWhitespace(s)
-                if !garbager.containsHtml(sentence);
-                if !garbager.tooLong(sentence);
-                if !garbager.tooShort(sentence)
-              } {
-                if (warcIt.currentDocument % 100 == 0 &&
-                    lastDocument != warcIt.currentDocument) {
-                  logger.info("Processing: " + warcIt.currentDocument + " (" +
-                              ("%.2f" format (warcIt.currentDocument.toDouble /
-                              ((System.nanoTime - nanos).toDouble /
-                              Timing.Seconds.divisor.toDouble))) + " doc/sec)")
-                  lastDocument = warcIt.currentDocument
-                }
+          // build the output file
+          val outputDirectory = config.outputDirectory match {
+            case Some(dir) => new File(dir, subdirectory)
+            case None => new File(subdirectory)
+          }
 
-                writer.println(warc.warcTrecId + "\t" +
-                               warc.warcUri + "\t" +
-                               warc.warcDate + "\t" +
-                               i + "\t" +
-                               sentence)
-                i += 1
+          // create the file's parent directory if it doesn't exist
+          outputDirectory.mkdirs
 
-              }
-            }
+          val outputFileName = makeOutputFileName(inputFile)
+          val outputFile = new File(outputDirectory, outputFileName)
+
+          // if the output file already exists, skip by returning None
+          if (outputFile.exists) {
+            None
+          } else {
+            Some(inputFile, outputFile)
           }
         }
-      }
 
-      logger.info("Processed file '" + file.getName + "' in: " +
-                  Timing.Seconds.format(ns))
+      } else {
+        // the user input a simple .warc file
+        val outputFileName = makeOutputFileName(file)
+        val outputFile = config.outputDirectory match {
+          case Some(dir) => new File(dir, outputFileName)
+          case None => new File(outputFileName)
+        }
+        Some(file, outputFile)
+      }
+    }
+
+    // Create the warc record processors
+    val garbager = new GarbageFilter()
+    val nlpSentencer = new OpenNlpSentencer()
+    val bp = new extractors.DefaultExtractor()
+
+    // For each (input, output) pair, get a warc record iterator for the input
+    // and write the corresponding extracted payload to the output
+    for ((inputFile, outputFile) <- files) {
+      val ns = Timing.time {
+      Resource.using(openInputStream(inputFile)) { is =>
+      Resource.using(new PrintWriter(outputFile, "UTF8")) { writer =>
+
+        val warcIt = new WarcRecordIterator(
+                       new DataInputStream(
+                       new BufferedInputStream(is))
+                     )
+        logger.info("Successfully created new warc iterator")
+
+        var lastDocument = 0
+        var nanos = System.nanoTime()
+
+        // Iterate over warc documents
+        for (warc <- warcIt.flatten;
+             if warc.warcType.equals("response") &&
+                !warc.payload.equals("")) {
+          // If this document is a multiple of a thousand, note it in the log
+          // and the current documents / second
+          if (warcIt.currentDocument % 1000 == 0 &&
+              lastDocument != warcIt.currentDocument) {
+            logger.info("Processing document: " + warcIt.currentDocument +
+                        " (" +
+                        ("%.2f" format (warcIt.currentDocument.toDouble /
+                        ((System.nanoTime - nanos).toDouble /
+                        Timing.Seconds.divisor.toDouble))) + " doc/sec)")
+            lastDocument = warcIt.currentDocument
+          }
+
+          // piped stores the payload after being passed through boilerpipe
+          val piped = try {
+            bp.getText(warc.payload.trim)
+          } catch {
+            case e: Throwable =>
+              logger.error("Error during boilerpipe extraction.\n" +
+                           "Skipping document\n" + e.getStackTraceString)
+              ""
+          }
+
+          val sentences = nlpSentencer.segmentTexts(piped)
+
+          // iterate over sentences
+          var i = 0
+          for {
+            s <- sentences
+
+            // apply garbage filter
+            sentence = garbager.removeWhitespace(s)
+            if !garbager.containsHtml(sentence);
+            if !garbager.tooLong(sentence);
+            if !garbager.tooShort(sentence)
+          } {
+            writer.println(warc.warcTrecId + "\t" +
+                           warc.warcUri + "\t" +
+                           warc.warcDate + "\t" +
+                           i + "\t" +
+                           sentence)
+            i += 1
+
+          }
+        }
+      }}}
+
+      logger.info("Processed file '" + inputFile.getName + "' -> '"
+          + outputFile.getName + "' in: " + Timing.Seconds.format(ns))
     }
   }
 

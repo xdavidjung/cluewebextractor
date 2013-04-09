@@ -2,7 +2,7 @@ WARC/1.0
 WARC-Type: warcinfo
 WARC-Date: 2012-02-10T20:36:36Z
 WARC-Filename: sample-0000wb-01.warc.gz
-WARC-Number-of-Documents: 3
+WARC-Number-of-Documents: 4
 WARC-File-Length: 1048303918
 WARC-Data-Type: web crawl
 WARC-Record-ID: <urn:uuid:b3fc4451-1b70-4a36-a410-8b0c68069a30>
@@ -2005,4 +2005,51 @@ Content-Type: text/html
       </table>
    </body>
 </html>
+
+WARC/1.0
+WARC-Type: response
+WARC-Date: 2012-02-12T00:44:18Z
+WARC-TREC-ID: clueweb12-0012wb-03-18133
+WARC-Target-URI: http://vedavid.org/frames2.html
+WARC-Payload-Digest: sha1:SXJWLWP7XDCGSWC5YQK7SVYQBX3CI2ZJ
+WARC-IP-Address: 208.99.113.131
+WARC-Record-ID: <urn:uuid:2209b6af-e46c-4b9e-aba0-c03bc37e2193>
+Content-Type: application/http; msgtype=response
+Content-Length: 1262
+
+HTTP/1.1 200 OK
+Date: Sun, 12 Feb 2012 00:44:20 GMT
+Server: Apache
+Last-Modified: Thu, 02 Oct 1997 14:11:38 GMT
+Accept-Ranges: bytes
+Content-Length: 1056
+Connection: close
+Content-Type: text/html
+
+<HTML><HEAD> 
+<TITLE>Vedavid Indological Windows</TITLE> 
+</HEAD> 
+<FRAMESET COLS="16%,*" AUTOORESIZE border=0 frameborder=0 framespacing=0> 
+<FRAME NAME="frame3" SRC="b1.html"> 
+<FRAMESET ROWS="67%,*"> 
+<FRAME NAME="frame1" SCROLLING="auto" SRC="index3.html"> 
+<FRAME NAME="frame2" SCROLLING="auto" SRC="testleft.html"> 
+</FRAMESET> 
+<P>
+<NOFRAMES> *** It looks like your Browser is not frame compatible Click the "Back" button up to your left on your browser, then go and
+get Netscape 2.0 or 3.0.  Internet Explorer works well too ***
+IT IS EASY TO DO THIS--IT WILL WALK YOU RIGHT THROUGH EVERYTHING-- Just
+remember it'lll take 30 min to download.  AOL folks should check under
+netscape in the AOL Internet list, there is a special one for you--and no
+charge to download it (at least at the time of this writing).
+OTHERWISE--go BACK and navigate the site just as you would any other--
+only without hitting the Frames button again. <!--This is where you insert
+your NONFRAME version of your Page--> 
+
+</NOFRAMES> 
+</FRAMESET> 
+</FRAMESET> 
+</P> 
+</HTML> 
+
 
