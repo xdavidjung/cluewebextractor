@@ -110,8 +110,10 @@ class WarcRecordIterator(dis: DataInputStream) extends Iterator[Option[WarcRecor
         return None
     }
 
+    if (byteBuffer.length < contentLength)
+      byteBuffer = new Array[Byte](contentLength)
+
     // Get the payload
-    byteBuffer = new Array[Byte](contentLength)
     try {
       dis.read(byteBuffer, 0, contentLength)
     } catch {
