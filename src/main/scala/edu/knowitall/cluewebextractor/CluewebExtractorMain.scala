@@ -173,8 +173,9 @@ object CluewebExtractorMain extends App {
             bp.getText(warc.payload.trim)
           } catch {
             case e: Throwable =>
-              logger.error("Error during boilerpipe extraction.\n" +
-                           "Skipping document\n" + e.getStackTraceString)
+              logger.error("Error during boilerpipe extraction. " +
+                           "Skipping document: " + warc.warcTrecId + "\n" +
+                           e + ": " + e.getStackTraceString)
               ""
           }
 
