@@ -55,8 +55,7 @@ object CluewebExtractorMain extends App {
 
   case class Config(
     inputFiles: Seq[File] = Seq.empty,
-    outputDirectory: Option[File] = None) {
-  }
+    outputDirectory: Option[File] = None) {}
 
   // Defines the command line arguments.
   val parser = new scopt.immutable.OptionParser[Config]("cweb") {
@@ -81,55 +80,8 @@ object CluewebExtractorMain extends App {
 
   def run(config: Config) {
 
-    // Output filename is the input filename up to and including the first dot
-    // with "sentences" as the extension.
-    def makeOutputFileName(inputFile: File) = {
-      inputFile.getName().takeWhile(_ != '.') + ".sentences"
-    }
-
     // Files contains (inputFile, outputFile) pairs.
-    val files: Iterable[(File, File)] = config.inputFiles.flatMap { file =>
-      import org.apache.commons.io.FileUtils
-      import scala.collection.JavaConverters._
-
-      // if it's a directory, search subdirectories
-      if (file.isDirectory) {
-        val files: Iterable[File] =
-          FileUtils.listFiles(file, Array("gz"), true).asScala
-
-        files.flatMap { inputFile =>
-          val subdirectory = inputFile.getParentFile.getPath.drop(file.getParentFile.getPath.length).drop(1)
-
-          // build the output file
-          val outputDirectory = config.outputDirectory match {
-            case Some(dir) => new File(dir, subdirectory)
-            case None => new File(subdirectory)
-          }
-
-          // create the file's parent directory if it doesn't exist
-          outputDirectory.mkdirs
-
-          val outputFileName = makeOutputFileName(inputFile)
-          val outputFile = new File(outputDirectory, outputFileName)
-
-          // if the output file already exists, skip by returning None
-          if (outputFile.exists) {
-            None
-          } else {
-            Some(inputFile, outputFile)
-          }
-        }
-
-      } else {
-        // the user input a simple .warc file
-        val outputFileName = makeOutputFileName(file)
-        val outputFile = config.outputDirectory match {
-          case Some(dir) => new File(dir, outputFileName)
-          case None => new File(outputFileName)
-        }
-        Some(file, outputFile)
-      }
-    }
+    val files: Iterable[(File, File)] = getInputOutputFiles(config)
 
     // Create the warc record processors
     val garbager = new GarbageFilter()
@@ -206,6 +158,61 @@ object CluewebExtractorMain extends App {
       logger.info("Processed file '" + inputFile.getName + "' -> '"
           + outputFile.getName + "' in: " + Timing.Seconds.format(ns))
     }
+  }
+
+  // Given a Config object with input files, returns an Iterable over pairs of
+  // (inputfile, outputfile), where inputfile corresponds to a File in config,
+  // and outputfile is the corresponding output file.
+  def getInputOutputFiles(config: Config): Iterable[(File, File)] = {
+    import org.apache.commons.io.FileUtils
+    import scala.collection.JavaConverters._
+
+    config.inputFiles.flatMap {
+      file =>
+      // if it's a directory, search subdirectories
+      if (file.isDirectory) {
+        val files: Iterable[File] =
+            FileUtils.listFiles(file, Array("gz"), true).asScala
+
+        files.flatMap { inputFile =>
+          val subdirectory = inputFile.getParentFile.getPath.drop(file.getParentFile.getPath.length).drop(1)
+
+          // build the output file
+          val outputDirectory = config.outputDirectory match {
+            case Some(dir) => new File(dir, subdirectory)
+            case None => new File(subdirectory)
+          }
+
+          // create the file's parent directory if it doesn't exist
+          outputDirectory.mkdirs
+
+          val outputFileName = makeOutputFileName(inputFile)
+          val outputFile = new File(outputDirectory, outputFileName)
+
+          // if the output file already exists, skip by returning None
+          if (outputFile.exists) {
+            None
+          } else {
+            Some(inputFile, outputFile)
+          }
+        }
+
+      } else {
+        // the user input a simple .warc file
+        val outputFileName = makeOutputFileName(file)
+        val outputFile = config.outputDirectory match {
+          case Some(dir) => new File(dir, outputFileName)
+          case None => new File(outputFileName)
+        }
+        Some(file, outputFile)
+      }
+    }
+  }
+
+  // Output filename is the input filename up to and including the first dot
+  // with "sentences" as the extension.
+  def makeOutputFileName(inputFile: File) = {
+    inputFile.getName().takeWhile(_ != '.') + ".sentences"
   }
 
   def usage {
