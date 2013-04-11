@@ -53,6 +53,11 @@ import java.util.zip.GZIPInputStream
 object CluewebExtractorMain extends App {
   val logger = LoggerFactory.getLogger(this.getClass)
 
+  // What we use to process the warc records
+  val garbager = new GarbageFilter()
+  val nlpSentencer = new OpenNlpSentencer()
+  val bp = new extractors.DefaultExtractor()
+
   case class Config(
     inputFiles: Seq[File] = Seq.empty,
     outputDirectory: Option[File] = None) {}
@@ -83,11 +88,6 @@ object CluewebExtractorMain extends App {
     // Files contains (inputFile, outputFile) pairs.
     val files: Iterable[(File, File)] = getInputOutputFiles(config)
 
-    // Create the warc record processors
-    val garbager = new GarbageFilter()
-    val nlpSentencer = new OpenNlpSentencer()
-    val bp = new extractors.DefaultExtractor()
-
     // For each (input, output) pair, get a warc record iterator for the input
     // and write the corresponding extracted payload to the output
     for ((inputFile, outputFile) <- files) {
@@ -97,66 +97,85 @@ object CluewebExtractorMain extends App {
 
         val warcIt = new WarcRecordIterator(
                        new DataInputStream(
-                       new BufferedInputStream(is))
-                     )
+                       new BufferedInputStream(is)))
         logger.info("Successfully created new warc iterator")
 
         var lastDocument = 0
         var nanos = System.nanoTime()
 
-        // Iterate over warc documents
-        for (warc <- warcIt.flatten;
-             if warc.warcType.equals("response") &&
-                !warc.payload.equals("")) {
-          // If this document is a multiple of a thousand, note it in the log
-          // and the current documents / second
-          if (warcIt.currentDocument % 1000 == 0 &&
-              lastDocument != warcIt.currentDocument) {
-            logger.info("Processing document: " + warcIt.currentDocument +
-                        " (" +
-                        ("%.2f" format (warcIt.currentDocument.toDouble /
-                        ((System.nanoTime - nanos).toDouble /
-                        Timing.Seconds.divisor.toDouble))) + " doc/sec)")
-            lastDocument = warcIt.currentDocument
-          }
+        // Iterate over warc records
+        for (warc <- warcIt.flatten) {
+          if (warc.warcType.equals("response") &&
+             !warc.payload.equals("")) {
+            // If this document is a multiple of a thousand, note it in the log
+            // and the current documents / second
+            if (warcIt.currentDocument % 1000 == 0 &&
+                lastDocument != warcIt.currentDocument) {
+              logger.info("Processing document: " + warcIt.currentDocument +
+                          " (" +
+                          ("%.2f" format (warcIt.currentDocument.toDouble /
+                          ((System.nanoTime - nanos).toDouble /
+                          Timing.Seconds.divisor.toDouble))) + " doc/sec)")
+              lastDocument = warcIt.currentDocument
 
-          // piped stores the payload after being passed through boilerpipe
-          val piped = try {
-            bp.getText(warc.payload.trim)
-          } catch {
-            case e: Throwable =>
-              logger.error("Error during boilerpipe extraction. " +
-                           "Skipping document: " + warc.warcTrecId + "\n" +
-                           e + ": " + e.getStackTraceString)
-              ""
-          }
-
-          val sentences = nlpSentencer.segmentTexts(piped)
-
-          // iterate over sentences
-          var i = 0
-          for {
-            s <- sentences
-
-            // apply garbage filter
-            sentence = garbager.removeWhitespace(s)
-            if !garbager.containsHtml(sentence);
-            if !garbager.tooLong(sentence);
-            if !garbager.tooShort(sentence)
-          } {
-            writer.println(warc.warcTrecId + "\t" +
-                           warc.warcUri + "\t" +
-                           warc.warcDate + "\t" +
-                           i + "\t" +
-                           sentence)
-            i += 1
-
+              processWarcRecord(warc, writer)
+            }
           }
         }
       }}}
 
       logger.info("Processed file '" + inputFile.getName + "' -> '"
           + outputFile.getName + "' in: " + Timing.Seconds.format(ns))
+    }
+  }
+
+  def processWarcRecord(warc: WarcRecord, writer: PrintWriter) = {
+    // piped stores the payload after being passed through boilerpipe
+    val piped = try {
+      bp.getText(warc.payload.trim)
+    } catch {
+      case e: Throwable =>
+        logger.error("Error during boilerpipe extraction. " +
+                     "Skipping document: " + warc.warcTrecId + "\n\t" +
+                     e + ": " + e.getStackTraceString)
+        ""
+    }
+
+    val sentences = nlpSentencer.segmentTexts(piped)
+
+    // iterate over sentences
+    var i = 0
+    for (s <- sentences) {
+      try {
+        if (processSentence(s, warc, writer, i))
+          i += 1
+      } catch {
+        case e: Throwable =>
+          logger.error("Error while processing sentence " +
+              warc.warcTrecId + ":" + i + "\n\t" + e + ": " +
+              e.getStackTraceString)
+      }
+    }
+  }
+
+  // Processes a given warc sentence with some filters. If the sentence passes
+  // through the filters, it gets written into writer.
+  def processSentence(sent: String,
+                      warc: WarcRecord,
+                      writer: PrintWriter,
+                      i: Int) = {
+    val sentence = garbager.removeWhitespace(sent)
+    if (!garbager.containsHtml(sentence) &&
+        !garbager.tooLong(sentence) &&
+        !garbager.tooShort(sentence)) {
+      writer.println(warc.warcTrecId + "\t" +
+                     warc.warcUri + "\t" +
+                     warc.warcDate + "\t" +
+                     i + "\t" +
+                     sentence)
+      true
+    } else {
+      false
     }
   }
 
