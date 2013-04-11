@@ -117,8 +117,13 @@ object CluewebExtractorMain extends App {
                           ((System.nanoTime - nanos).toDouble /
                           Timing.Seconds.divisor.toDouble))) + " doc/sec)")
               lastDocument = warcIt.currentDocument
-
-              processWarcRecord(warc, writer)
+              try {
+                processWarcRecord(warc, writer)
+              } catch {
+                case e: Throwable =>
+                  logger.error("Error while processing warc record: " +
+                      warc.warcTrecId + "\n\t" + e + ": " + e.getStackTraceString)
+              }
             }
           }
         }
@@ -129,6 +134,8 @@ object CluewebExtractorMain extends App {
     }
   }
 
+  // Given a warc record, processes it using boilerpipe and writes each
+  // sentences out to writer
   def processWarcRecord(warc: WarcRecord, writer: PrintWriter) = {
     // piped stores the payload after being passed through boilerpipe
     val piped = try {
