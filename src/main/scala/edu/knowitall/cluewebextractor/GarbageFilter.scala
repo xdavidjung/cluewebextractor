@@ -18,13 +18,12 @@ class GarbageFilter() {
   }
 
   // Returns true if input contains HTML content, false otherwise.
-  // On error, returns true
   def containsHtml(input: String): Boolean = {
-    input.startsWith("HTTP/1.1") || // is an HTTP request
-      input.contains("</") || // closing tags
-      input.contains("/>") || // self-closing tags
-      input.contains("<a href=") || // anchor tags
-      input.matches(".*<.{1,4}>.*") // opening tags, 1-4 chars
+    input.startsWith("HTTP/1.1") ||  // is an HTTP request
+      input.contains("</") ||        // closing tags
+      input.contains("/>") ||        // self-closing tags
+      input.contains("<a href=") ||  // anchor tags
+      input.matches(".*<.{1,4}>.*")  // opening tags, 1-4 chars
   }
 
   // Returns true if input contains less than six words (detected by the
