@@ -1,23 +1,24 @@
 cluewebextractor
 ================
-cluewebextractor takes warc files from Clueweb and extracts sentences from them.
+cluewebextractor takes warc files from Clueweb and extracts sentences from 
+each warc record's payload. 
 
-For each sentence found, outputs a tab-separated line with fields: warc id, sentence number, sentence.
+On error, cluewebextractor prefers to skip over the smallest possible amount of 
+data rather than crash. The amount skipped can be either a sentence, a warc 
+record, or an entire warc file (which should be relatively rare).
 
-Note that in order to run the user must supply a directory of language profiles, which are needed by the language detection module (http://code.google.com/p/language-detection/). The default directory to use is in the base directory of this repo.
+For each sentence found, outputs a tab-separated line with fields: 
+warc trec-id, url, sentence number, sentence
 
 To make the jar file, run:
 
 mvn compile scala:compile assembly:single
 
-There are two ways to supply input: either a .warc file or by passing in the contents of a warc file through standard in, such as piping gunzip -c output.
+Usage: 
 
-Usage when supplying a .warc file:
+java -jar \<jarfile\> \<input\> --output-dir \<output-dir\>
 
-java -jar \<jarfile\> \<profiles-directory\> \<warcfile\>
+--output-dir is an optional switch that specifies an output directory for the 
+extracted content. 
 
-Usage when supplying content through standard in:
-
-java -jar \<jarfile\> \<profiles-directory\>
-
-Prints to standard output.
+The extractor will print out to an output file for each input file. 
