@@ -10,11 +10,15 @@ record, or an entire warc file (which should be relatively rare).
 For each sentence found, outputs a tab-separated line with fields: 
 warc trec-id, url, sentence number, sentence
 
+Quick Start:
+------------
+
 To make the jar file, run:
 
 mvn compile scala:compile assembly:single
 
-Usage: 
+Usage:
+------
 
 java -jar \<jarfile\> \<input\> --output-dir \<output-dir\>
 
