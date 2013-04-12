@@ -91,47 +91,60 @@ object CluewebExtractorMain extends App {
     // For each (input, output) pair, get a warc record iterator for the input
     // and write the corresponding extracted payload to the output
     for ((inputFile, outputFile) <- files) {
-      val ns = Timing.time {
-      Resource.using(openInputStream(inputFile)) { is =>
-      Resource.using(new PrintWriter(outputFile, "UTF8")) { writer =>
+      try {
+        processWarcFile(inputFile, outputFile)
+      } catch {
+        case e: Throwable =>
+          logger.error("Error while processing warc file: " + inputFile +
+              ". Skipping file. \n\t" + e + ": " + e.getStackTraceString);
+      }
 
-        val warcIt = new WarcRecordIterator(
-                       new DataInputStream(
-                       new BufferedInputStream(is)))
-        logger.info("Successfully created new warc iterator")
+    }
+  }
 
-        var lastDocument = 0
-        var nanos = System.nanoTime()
+  // Given an input warc file and its corresponding output file, processes the
+  // input and writes out the payloads to outputFile.
+  def processWarcFile(inputFile: File, outputFile: File) = {
+    val ns = Timing.time {
+    Resource.using(openInputStream(inputFile)) { is =>
+    Resource.using(new PrintWriter(outputFile, "UTF8")) { writer =>
 
-        // Iterate over warc records
-        for (warc <- warcIt.flatten) {
-          if (warc.warcType.equals("response") &&
-             !warc.payload.equals("")) {
-            // If this document is a multiple of a thousand, note it in the log
-            // and the current documents / second
-            if (warcIt.currentDocument % 1000 == 0 &&
-                lastDocument != warcIt.currentDocument) {
-              logger.info("Processing document: " + warcIt.currentDocument +
-                          " (" +
-                          ("%.2f" format (warcIt.currentDocument.toDouble /
-                          ((System.nanoTime - nanos).toDouble /
-                          Timing.Seconds.divisor.toDouble))) + " doc/sec)")
-              lastDocument = warcIt.currentDocument
-              try {
-                processWarcRecord(warc, writer)
-              } catch {
-                case e: Throwable =>
-                  logger.error("Error while processing warc record: " +
-                      warc.warcTrecId + "\n\t" + e + ": " + e.getStackTraceString)
-              }
+      val warcIt = new WarcRecordIterator(
+                     new DataInputStream(
+                     new BufferedInputStream(is)))
+      logger.info("Successfully created new warc iterator")
+
+      var lastDocument = 0
+      var nanos = System.nanoTime()
+
+      // Iterate over warc records
+      for (warc <- warcIt.flatten) {
+        if (warc.warcType.equals("response") &&
+           !warc.payload.equals("")) {
+          // If this document is a multiple of a thousand, note it in the log
+          // and the current documents / second
+          if (warcIt.currentDocument % 1000 == 0 &&
+              lastDocument != warcIt.currentDocument) {
+            logger.info("Processing document: " + warcIt.currentDocument +
+                        " (" +
+                        ("%.2f" format (warcIt.currentDocument.toDouble /
+                        ((System.nanoTime - nanos).toDouble /
+                        Timing.Seconds.divisor.toDouble))) + " doc/sec)")
+            lastDocument = warcIt.currentDocument
+            try {
+              processWarcRecord(warc, writer)
+            } catch {
+              case e: Throwable =>
+                logger.error("Error while processing warc record: " +
+                    warc.warcTrecId + "\n\t" + e + ": " + e.getStackTraceString)
             }
           }
         }
-      }}}
+      }
+    }}}
 
-      logger.info("Processed file '" + inputFile.getName + "' -> '"
-          + outputFile.getName + "' in: " + Timing.Seconds.format(ns))
-    }
+    logger.info("Processed file '" + inputFile.getName + "' -> '"
+        + outputFile.getName + "' in: " + Timing.Seconds.format(ns))
   }
 
   // Given a warc record, processes it using boilerpipe and writes each
