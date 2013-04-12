@@ -131,13 +131,13 @@ object CluewebExtractorMain extends App {
                         ((System.nanoTime - nanos).toDouble /
                         Timing.Seconds.divisor.toDouble))) + " doc/sec)")
             lastDocument = warcIt.currentDocument
-            try {
-              processWarcRecord(warc, writer)
-            } catch {
-              case e: Throwable =>
-                logger.error("Error while processing warc record: " +
-                    warc.warcTrecId + "\n\t" + e + ": " + e.getStackTraceString)
-            }
+          }
+          try {
+            processWarcRecord(warc, writer)
+          } catch {
+            case e: Throwable =>
+              logger.error("Error while processing warc record: " +
+                  warc.warcTrecId + "\n\t" + e + ": " + e.getStackTraceString)
           }
         }
       }
