@@ -9,12 +9,7 @@ class GarbageFilter() {
   // Removes series of extraneous whitespace in the input sentence
   // On error simply returns the input
   def removeWhitespace(input: String): String = {
-    try {
-      new Regex("""\s+""").replaceAllIn(input, " ")
-    } catch {
-      case e: Throwable =>
-        input
-    }
+    new Regex("""\s+""").replaceAllIn(input, " ")
   }
 
   // Returns true if input contains HTML content, false otherwise.
