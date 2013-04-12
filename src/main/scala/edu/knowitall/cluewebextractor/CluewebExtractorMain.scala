@@ -211,7 +211,7 @@ object CluewebExtractorMain extends App {
       // if it's a directory, search subdirectories
       if (file.isDirectory) {
         val files: Iterable[File] =
-            FileUtils.listFiles(file, Array("gz"), true).asScala
+            FileUtils.listFiles(file, Array("gz", "warc"), true).asScala
 
         files.flatMap { inputFile =>
           val subdirectory = inputFile.getParentFile.getPath.drop(file.getParentFile.getPath.length).drop(1)
